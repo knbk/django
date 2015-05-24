@@ -12,6 +12,7 @@ from django.conf import settings
 from django.core import signals
 from django.core.handlers import base
 from django.core.urlresolvers import set_script_prefix
+from django.core.urls import URL
 from django.utils import six
 from django.utils.encoding import force_str, force_text
 from django.utils.functional import cached_property
@@ -111,6 +112,7 @@ class WSGIRequest(http.HttpRequest):
         self._stream = LimitedStream(self.environ['wsgi.input'], content_length)
         self._read_started = False
         self.resolver_match = None
+        self.url = URL.from_request(self)
 
     def _get_scheme(self):
         return self.environ.get('wsgi.url_scheme')

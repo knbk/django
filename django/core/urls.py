@@ -1,14 +1,19 @@
 from __future__ import unicode_literals
+
 import re
 
 from django.core.exceptions import ImproperlyConfigured
 from django.http import Http404
-from django.utils import six, lru_cache
+from django.utils import lru_cache, six
 from django.utils.datastructures import MultiValueDict
-from django.utils.encoding import force_text
+from django.utils.encoding import (
+    escape_uri_path, force_str, force_text, iri_to_uri,
+    python_2_unicode_compatible,
+)
 from django.utils.functional import cached_property
 from django.utils.module_loading import import_module
 from django.utils.regex_helper import normalize
+from django.utils.six.moves.urllib.parse import urljoin, urlsplit, urlunsplit
 from django.utils.translation import get_language
 
 
@@ -47,20 +52,20 @@ class ResolverMatch(object):
             # A function-based view
             self._func_path = '.'.join([func.__module__, func.__name__])
 
-    @property
+    @cached_property
     def app_name(self):
         return ':'.join(self.app_names)
 
-    @property
+    @cached_property
     def namespace(self):
         return ':'.join(self.namespaces)
 
-    @property
+    @cached_property
     def view_name(self):
         view_path = self.url_name or self._func_path
         return ':'.join(self.namespaces + [view_path])
 
-    @property
+    @cached_property
     def callback(self):
         callback = self.func
         for decorator in self.decorators:
@@ -92,28 +97,96 @@ class ResolverMatch(object):
         )
 
 
-@six.python_2_unicode_compatible
+@python_2_unicode_compatible
 class URL(object):
-    def __init__(self, request=None, host='', path=''):
-        self.request = request
-        self.host, self.path = host, path
-        if request and not (host or path):
-            self.host, self.path = request.get_host(), request.path
+    def __init__(self, scheme='', host='', path='', script_name='', path_info='', query_string='', fragment=''):
+        self.scheme = scheme
+        self.host = host
+        self.path = path
+        self.script_name = script_name
+        self.path_info = path_info
+        self.query_string = query_string
+        self.fragment = fragment
+
+    @classmethod
+    def from_request(cls, request):
+        """
+        Build an URLDescriptor from a request.
+        """
+        return cls(
+            scheme=request.scheme, host=request.get_host(), path=request.path,
+            script_name=request.META.get('SCRIPT_NAME', ''), path_info=request.path_info,
+            query_string=request.META.get('QUERY_STRING', ''), fragment='',  # No fragment
+        )
+
+    def __repr__(self):
+        return force_str('<URL %r>' % self.absolute_uri)
 
     def __str__(self):
-        return self.build_path()
+        return self.relative_uri
 
-    def build_path(self, request=None):
-        # build the needed url, including the host if it differs from `request.get_host()`
-        if request and request.get_host() != self.host:
-            return "%s%s" % (self.host, self.path)
-        return self.path
+    @cached_property
+    def relative_uri(self):
+        return self.build_relative_uri()
 
-    def clone(self):
+    @cached_property
+    def absolute_uri(self):
+        return self.build_absolute_uri()
+
+    def get_full_path(self, force_append_slash=False):
+        # RFC 3986 requires query string arguments to be in the ASCII range.
+        # Rather than crash if this doesn't happen, we encode defensively.
+        return '%s%s%s%s' % (
+            escape_uri_path(self.path),
+            '/' if force_append_slash and not self.path.endswith('/') else '',
+            ('?' + iri_to_uri(self.query_string)) if self.query_string else '',
+            ('#' + iri_to_uri(self.fragment)) if self.fragment else '',
+        )
+
+    def build_relative_uri(self, location=None):
+        if isinstance(location, URL):
+            location = location.build_absolute_uri()
+        scheme, host, path, query_string, fragment = urlsplit(self.build_absolute_uri(location))
+        if scheme == self.scheme:
+            scheme = ''
+        if not scheme and host == self.host:
+            host = ''
+        return urlunsplit((scheme, host, path, query_string, fragment))
+
+    def build_absolute_uri(self, location=None):
+        """
+        Builds an absolute URI from the location and the variables available in
+        this request. If no ``location`` is specified, the absolute URI is
+        built on ``request.get_full_path()``. Anyway, if the location is
+        absolute, it is simply converted to an RFC 3987 compliant URI and
+        returned and if location is relative or is scheme-relative (i.e.,
+        ``//example.com/``), it is urljoined to a base URL constructed from the
+        request variables.
+        """
+        if location is None:
+            # Make it an absolute url (but schemeless and domainless) for the
+            # edge case that the path starts with '//'.
+            location = '//%s' % self.get_full_path()
+        bits = urlsplit(location)
+        if not (bits.scheme and bits.netloc):
+            current_uri = '{scheme}://{host}{path}'.format(scheme=self.scheme,
+                                                           host=self.host,
+                                                           path=self.path)
+            # Join the constructed URL with the provided location, which will
+            # allow the provided ``location`` to apply query strings to the
+            # base path as well as override the host, if it begins with //
+            location = urljoin(current_uri, location)
+        return iri_to_uri(location)
+
+    def copy(self):
         return self.__class__(
-            request=self.request,
+            scheme=self.scheme,
             host=self.host,
             path=self.path,
+            script_name=self.script_name,
+            path_info=self.path_info,
+            query_string=self.query_string,
+            fragment=self.fragment,
         )
 
 
@@ -152,10 +225,9 @@ class Resolver(object):
         if current_app:
             if name in self.namespace_dict and current_app[0] in self.namespace_dict.getlist(name):
                 return current_app[0], current_app[1:]
-        if name in self.namespace_dict:
+        if name in self.namespace_dict and name not in self.namespace_dict.get_list(name):
             return self.namespace_dict[name], current_app[1:]
-        else:
-            return name, current_app[1:]
+        return name, current_app[1:]
 
     def search(self, lookup, current_app):
         if not lookup:
@@ -181,17 +253,17 @@ class Resolver(object):
                 for constraints in pattern.search(lookup, current_app):
                     yield self.constraints + constraints
 
-    def match(self, url):
-        new_url = url.clone()
+    def match(self, request, url):
+        new_url = url.copy()
         args, kwargs = (), {}
         for constraint in self.constraints:
-            new_url, new_args, new_kwargs = constraint.match(new_url)
+            new_url, new_args, new_kwargs = constraint.match(request, new_url)
             args += new_args
             kwargs.update(new_kwargs)
         return new_url, args, kwargs
 
-    def resolve(self, url):
-        new_url, args, kwargs = self.match(url)
+    def resolve(self, request, url):
+        new_url, args, kwargs = self.match(request, url)
 
         if self.func:
             return ResolverMatch(
@@ -201,7 +273,7 @@ class Resolver(object):
 
         for name, pattern in self.patterns:
             try:
-                sub_match = pattern.resolve(new_url)
+                sub_match = pattern.resolve(request, new_url)
             except Resolver404 as e:
                 # print(e)
                 continue
@@ -227,7 +299,7 @@ class Constraint(object):
     def __init__(self, default_kwargs=None):
         self.default_kwargs = default_kwargs or {}
 
-    def match(self, url):
+    def match(self, request, url):
         raise NotImplemented()
 
     def construct(self, url, *args, **kwargs):
@@ -272,8 +344,8 @@ class LocaleRegexProvider(Constraint):
 
 
 class RegexPattern(LocaleRegexProvider):
-    def match(self, url):
-        match = self.regex.search(url.path)
+    def match(self, request, url):
+        match = self.regex.search(url.path_info)
         if match:
             kwargs = match.groupdict()
             kwargs.update(self.default_kwargs)
@@ -281,7 +353,9 @@ class RegexPattern(LocaleRegexProvider):
                 args = ()
             else:
                 args = match.groups()
-            url.path = url.path[match.end():]
+            matched_path, extra_path_info = url.path_info[:match.end()], url.path_info[match.end():]
+            url.script_name += matched_path
+            url.path_info = extra_path_info
             return url, args, kwargs
         raise Resolver404("No match for %s" % self.regex.pattern)
 
@@ -316,10 +390,11 @@ class RegexPattern(LocaleRegexProvider):
 
 def resolve(request, urlconf=None):
     if isinstance(request, six.string_types):
-        url = URL(path=request)
-    else:
-        url = URL(request)
-    return get_resolver(urlconf).resolve(url)
+        # request is the actual path
+        url = URL(path=request, path_info=request)
+        return get_resolver(urlconf).resolve(None, url)
+    url = request.url.copy()
+    return get_resolver(urlconf).resolve(request, url)
 
 
 def reverse(view, urlconf=None, args=None, kwargs=None, prefix=None, current_app=None):
@@ -352,7 +427,7 @@ def reverse(view, urlconf=None, args=None, kwargs=None, prefix=None, current_app
                 raise NoReverseMatch("Tried %s with arguments %s and keyword arguments %s" % (constraints, args, kwargs))
             return url
         except NoReverseMatch as e:
-            print(e)
+            # print(e)
             continue
 
     raise NoReverseMatch("End of reverse")

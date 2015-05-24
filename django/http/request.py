@@ -62,6 +62,9 @@ class HttpRequest(object):
         self.resolver_match = None
         self._post_parse_error = False
 
+        from django.core.urls import URL
+        self.url = URL.from_request(self)
+
     def __repr__(self):
         if self.method is None or not self.get_full_path():
             return force_str('<%s>' % self.__class__.__name__)
@@ -100,13 +103,7 @@ class HttpRequest(object):
             raise DisallowedHost(msg)
 
     def get_full_path(self, force_append_slash=False):
-        # RFC 3986 requires query string arguments to be in the ASCII range.
-        # Rather than crash if this doesn't happen, we encode defensively.
-        return '%s%s%s' % (
-            escape_uri_path(self.path),
-            '/' if force_append_slash and not self.path.endswith('/') else '',
-            ('?' + iri_to_uri(self.META.get('QUERY_STRING', ''))) if self.META.get('QUERY_STRING', '') else ''
-        )
+        return self.url.get_full_path(force_append_slash)
 
     def get_signed_cookie(self, key, default=RAISE_ERROR, salt='', max_age=None):
         """
@@ -132,29 +129,7 @@ class HttpRequest(object):
         return value
 
     def build_absolute_uri(self, location=None):
-        """
-        Builds an absolute URI from the location and the variables available in
-        this request. If no ``location`` is specified, the absolute URI is
-        built on ``request.get_full_path()``. Anyway, if the location is
-        absolute, it is simply converted to an RFC 3987 compliant URI and
-        returned and if location is relative or is scheme-relative (i.e.,
-        ``//example.com/``), it is urljoined to a base URL constructed from the
-        request variables.
-        """
-        if location is None:
-            # Make it an absolute url (but schemeless and domainless) for the
-            # edge case that the path starts with '//'.
-            location = '//%s' % self.get_full_path()
-        bits = urlsplit(location)
-        if not (bits.scheme and bits.netloc):
-            current_uri = '{scheme}://{host}{path}'.format(scheme=self.scheme,
-                                                           host=self.get_host(),
-                                                           path=self.path)
-            # Join the constructed URL with the provided location, which will
-            # allow the provided ``location`` to apply query strings to the
-            # base path as well as override the host, if it begins with //
-            location = urljoin(current_uri, location)
-        return iri_to_uri(location)
+        return self.url.build_absolute_uri(location)
 
     def _get_scheme(self):
         """
