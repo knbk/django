@@ -11,11 +11,11 @@ def setup(set_prefix=True):
     """
     Configure the settings (this happens as a side effect of accessing the
     first setting), configure logging and populate the app registry.
-    Set the thread-local urlresolvers script prefix if `set_prefix` is True.
+    Set the thread-local urls script prefix if `set_prefix` is True.
     """
     from django.apps import apps
     from django.conf import settings
-    from django.core.urlresolvers import set_script_prefix
+    from django.urls import set_script_prefix
     from django.utils.encoding import force_text
     from django.utils.log import configure_logging
 

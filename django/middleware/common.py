@@ -1,9 +1,8 @@
 import logging
 import re
 
-from django import http
+from django import http, urls
 from django.conf import settings
-from django.core import urlresolvers
 from django.core.exceptions import PermissionDenied
 from django.core.mail import mail_managers
 from django.utils.cache import get_conditional_response, set_response_etag
@@ -73,8 +72,8 @@ class CommonMiddleware(object):
         if settings.APPEND_SLASH and not request.get_full_path().endswith('/'):
             urlconf = getattr(request, 'urlconf', None)
             return (
-                not urlresolvers.is_valid_path(request.path_info, urlconf)
-                and urlresolvers.is_valid_path('%s/' % request.path_info, urlconf)
+                not urls.is_valid_path(request.path_info, urlconf)
+                and urls.is_valid_path('%s/' % request.path_info, urlconf)
             )
         return False
 

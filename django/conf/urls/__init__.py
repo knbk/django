@@ -2,11 +2,13 @@ import warnings
 from importlib import import_module
 
 from django.core.exceptions import ImproperlyConfigured
-from django.core.urlresolvers import (
-    LocaleRegexURLResolver, RegexURLPattern, RegexURLResolver,
+from django.urls import (
+    LocalePrefix, LocalizedRegexPattern, RegexPattern, Resolver,
+    ResolverEndpoint,
 )
 from django.utils import six
 from django.utils.deprecation import RemovedInDjango20Warning
+from django.utils.functional import Promise
 
 __all__ = ['handler400', 'handler403', 'handler404', 'handler500', 'include', 'url']
 
@@ -64,22 +66,28 @@ def include(arg, namespace=None, app_name=None):
     # Make sure we can iterate through the patterns (without this, some
     # testcases will break).
     if isinstance(patterns, (list, tuple)):
-        for url_pattern in patterns:
+        for name, resolver in patterns:
             # Test if the LocaleRegexURLResolver is used within the include;
             # this should throw an error since this is not allowed!
-            if isinstance(url_pattern, LocaleRegexURLResolver):
+            if any(isinstance(constraint, LocalePrefix) for constraint in resolver.constraints):
                 raise ImproperlyConfigured(
                     'Using i18n_patterns in an included URLconf is not allowed.')
 
     return (urlconf_module, app_name, namespace)
 
 
-def url(regex, view, kwargs=None, name=None):
+def url(constraints, view, kwargs=None, name=None, decorators=None):
+    if isinstance(constraints, six.string_types):
+        constraints = RegexPattern(constraints)
+    elif isinstance(constraints, Promise):
+        constraints = LocalizedRegexPattern(constraints)
+    if not isinstance(constraints, (list, tuple)):
+        constraints = [constraints]
+
     if isinstance(view, (list, tuple)):
-        # For include(...) processing.
-        urlconf_module, app_name, namespace = view
-        return RegexURLResolver(regex, urlconf_module, kwargs, app_name=app_name, namespace=namespace)
+        resolvers, app_name, namespace = view
+        return namespace, Resolver(resolvers, app_name, constraints=constraints, kwargs=kwargs, decorators=decorators)
     elif callable(view):
-        return RegexURLPattern(regex, view, kwargs, name)
+        return None, ResolverEndpoint(view, name, constraints=constraints, kwargs=kwargs, decorators=decorators)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
