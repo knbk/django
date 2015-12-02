@@ -1,6 +1,7 @@
 from __future__ import unicode_literals
 from contextlib import contextmanager
 from importlib import import_module
+from itertools import zip_longest
 from threading import local
 
 from django.template.context import BaseContext
@@ -31,21 +32,20 @@ def get_resolver(urlconf=None):
     return Resolver(urlconf, constraints=[RegexPattern(r'^/')])
 
 
-class ResolverTree(object):
-    def __init__(self, urlconf_name, load=True):
+class Dispatcher(object):
+    def __init__(self, urlconf_name):
         self.urlconf_name = urlconf_name
-        self.urlconf_module = None
-        self.resolver = None
+        if isinstance(urlconf_name, six.string_types):
+            self.urlconf_module = import_module(urlconf_name)
+        else:
+            self.urlconf_module = urlconf_name
+        self.resolver = Resolver(self.urlconf_module, None, [RegexPattern('^/')])
         self.reverse_dict = None
 
-        if load:
-            self.build_tree()
+        self.build_tree()
 
     def build_tree(self):
-        self.urlconf_module = import_module(self.urlconf_name) if isinstance(self.urlconf_name,
-                                                                             six.string_types) else self.urlconf_name
-        self.resolver = Resolver(self.urlconf_module, None, [RegexPattern('^/')])
-        self.reverse_dict = MultiValueDict()
+        reverse_dict = MultiValueDict()
         app_names, namespaces, constraints, decorators, kwargs = [], [], [RegexPattern('^/')], [], BaseContext()
         kwargs.dicts[0] = {}
 
@@ -64,10 +64,12 @@ class ResolverTree(object):
                         patterns = getattr(module, "urlpatterns", module)
                         recurse_resolvers(patterns)
                     else:
-                        key = tuple(namespaces)
-                        self.reverse_dict.appendlist(key + (resolver.func,), (list(constraints), kwargs.flatten()))
+                        func_key = tuple(namespaces) + (resolver.func,)
+                        value = (list(constraints), kwargs.flatten())
+                        reverse_dict.appendlist(func_key, value)
                         if getattr(resolver, "url_name", None):
-                            self.reverse_dict.appendlist(key + (resolver.url_name,), (list(constraints), kwargs.flatten()))
+                            name_key = tuple(namespaces) + (resolver.url_name,)
+                            reverse_dict.appendlist(name_key, value)
                 finally:
                     if resolver.app_name is not None:
                         app_names.pop()
@@ -79,10 +81,18 @@ class ResolverTree(object):
 
         recurse_resolvers(getattr(self.urlconf_module, "urlpatterns", self.urlconf_module))
 
+        self.reverse_dict = reverse_dict
+
     def resolve(self, path, request=None):
-        if self.resolver is None:
-            self.build_tree()
         return self.resolver.resolve(path, request)
+
+    def resolve_namespace(self, lookup, current_app):
+        return tuple(self.resolver.resolve_namespace(lookup, current_app))
+
+    def search(self, lookup):
+        if lookup in self.reverse_dict:
+            for constraints, kwargs in self.reverse_dict.getlist(lookup):
+                yield constraints, kwargs
 
 
 def resolve(path, urlconf=None, request=None):
