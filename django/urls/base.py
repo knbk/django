@@ -59,10 +59,8 @@ class Dispatcher(object):
                 kwargs.push(resolver.kwargs)
 
                 try:
-                    if hasattr(resolver, "urlconf_module"):
-                        module = resolver.urlconf_module
-                        patterns = getattr(module, "urlpatterns", module)
-                        recurse_resolvers(patterns)
+                    if hasattr(resolver, "resolvers"):
+                        recurse_resolvers(resolver.resolvers)
                     else:
                         func_key = tuple(namespaces) + (resolver.func,)
                         value = (list(constraints), kwargs.flatten())
@@ -79,7 +77,7 @@ class Dispatcher(object):
                     [decorators.pop() for _ in resolver.decorators]
                     kwargs.pop()
 
-        recurse_resolvers(getattr(self.urlconf_module, "urlpatterns", self.urlconf_module))
+        recurse_resolvers(self.resolver.resolvers)
 
         self.reverse_dict = reverse_dict
 
