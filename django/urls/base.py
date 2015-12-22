@@ -126,7 +126,11 @@ class Dispatcher(object):
             )
         )
 
+    @lru_cache.lru_cache(maxsize=None)
     def resolve_namespace(self, lookup, current_app=None):
+        lookup = list(lookup)
+        if current_app is not None:
+            current_app = list(current_app)
         return self.resolver.resolve_namespace(lookup, current_app)
 
     @property
@@ -187,7 +191,7 @@ def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None):
 
     current_app = current_app.split(':') if current_app else []
 
-    lookup = resolver.resolve_namespace(lookup, current_app)
+    lookup = resolver.resolve_namespace(tuple(lookup), tuple(current_app))
 
     return resolver.reverse(lookup, *text_args, **text_kwargs)
 
