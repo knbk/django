@@ -3,6 +3,7 @@ from __future__ import unicode_literals
 from functools import update_wrapper
 
 from django.core.exceptions import ImproperlyConfigured
+from django.template.context import BaseContext
 from django.urls.constraints import RegexPattern
 from django.urls.exceptions import NoReverseMatch, Resolver404
 from django.utils import six
@@ -132,6 +133,34 @@ class Resolver(BaseResolver):
         else:
             urlconf_repr = repr(self.urlconf_name)
         return '<%s %s (%s)>' % (self.__class__.__name__, urlconf_repr, self.app_name)
+
+    def flatten(self):
+        """
+        yield namespace, resolver, constraints, kwargs
+        namespace is None for an endpoint, a string for a sub-namespace
+        """
+        constraints, kwargs, decorators = [], BaseContext(), []
+        kwargs.dicts[0] = {}
+        for namespace, resolver in self.resolvers:
+            constraints.extend(resolver.constraints)
+            kwargs.push(resolver.kwargs)
+            decorators.extend(resolver.decorators)
+            if resolver.app_name:
+                yield (namespace or resolver.app_name), resolver, list(constraints), kwargs.flatten(), list(decorators)
+            elif hasattr(resolver, 'flatten'):
+                for n, r, c, kw, d in resolver.flatten():
+                    constraints.extend(c)
+                    kwargs.push(kw)
+                    decorators.extend(d)
+                    yield n, r, list(constraints), kwargs.flatten(), list(decorators)
+                    constraints = constraints[:-len(c)]
+                    kwargs.pop()
+                    decorators = decorators[:-len(d)]
+            else:
+                yield None, resolver, list(constraints), kwargs.flatten(), list(decorators)
+            constraints = constraints[:-len(resolver.constraints)]
+            kwargs.pop()
+            decorators = constraints[:-len(resolver.decorators)]
 
     @cached_property
     def urlconf_module(self):

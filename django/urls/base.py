@@ -1,8 +1,8 @@
 from __future__ import unicode_literals
-from contextlib import contextmanager
+
+from collections import defaultdict
 from importlib import import_module
-from itertools import zip_longest
-from threading import local
+from threading import local, Lock
 
 from django.template.context import BaseContext
 from django.urls.exceptions import NoReverseMatch
@@ -29,69 +29,134 @@ def get_resolver(urlconf=None):
     if urlconf is None:
         from django.conf import settings
         urlconf = settings.ROOT_URLCONF
-    return Resolver(urlconf, constraints=[RegexPattern(r'^/')])
+    return Dispatcher(urlconf)
 
 
 class Dispatcher(object):
-    def __init__(self, urlconf_name):
-        self.urlconf_name = urlconf_name
-        if isinstance(urlconf_name, six.string_types):
-            self.urlconf_module = import_module(urlconf_name)
-        else:
-            self.urlconf_module = urlconf_name
-        self.resolver = Resolver(self.urlconf_module, None, [RegexPattern('^/')])
-        self.reverse_dict = None
+    def __init__(self, urlconf):
+        self.ready = False
+        self.urlconf = urlconf
+        self.resolver = Resolver(urlconf, constraints=[RegexPattern('^/')])
 
-        self.build_tree()
+        self._namespaces = {}
+        self.reverse_dict = MultiValueDict()
+        self.app_dict = defaultdict(list)
 
-    def build_tree(self):
-        reverse_dict = MultiValueDict()
-        app_names, namespaces, constraints, decorators, kwargs = [], [], [RegexPattern('^/')], [], BaseContext()
-        kwargs.dicts[0] = {}
+        self.load_root()
 
-        def recurse_resolvers(resolvers):
-            for name, resolver in resolvers:
-                if resolver.app_name is not None:
-                    app_names.append(resolver.app_name)
-                    namespaces.append(name or resolver.app_name)
-                constraints.extend(resolver.constraints)
-                decorators.extend(resolver.decorators)
-                kwargs.push(resolver.kwargs)
+    def load_root(self):
+        for name, resolver, constraints, kwargs, decorators in self.resolver.flatten():
+            constraints = self.resolver.constraints + constraints
+            if name is None:  # A view endpoint
+                self.reverse_dict.appendlist((resolver.func,), (constraints, kwargs, decorators))
+                if resolver.url_name is not None:
+                    self.reverse_dict.appendlist((resolver.url_name,), (constraints, kwargs, decorators))
+            else:  # a subnamespace
+                self.app_dict[(resolver.app_name,)].append(name)
+                self._namespaces[(name,)] = (resolver.app_name,), resolver, constraints, kwargs, decorators
+        self.ready = True
 
-                try:
-                    if hasattr(resolver, "resolvers"):
-                        recurse_resolvers(resolver.resolvers)
-                    else:
-                        func_key = tuple(namespaces) + (resolver.func,)
-                        value = (list(constraints), kwargs.flatten())
-                        reverse_dict.appendlist(func_key, value)
-                        if getattr(resolver, "url_name", None):
-                            name_key = tuple(namespaces) + (resolver.url_name,)
-                            reverse_dict.appendlist(name_key, value)
-                finally:
-                    if resolver.app_name is not None:
-                        app_names.pop()
-                        namespaces.pop()
-                    # We need to modify these in place because of scope issues
-                    [constraints.pop() for _ in resolver.constraints]
-                    [decorators.pop() for _ in resolver.decorators]
-                    kwargs.pop()
-
-        recurse_resolvers(self.resolver.resolvers)
-
-        self.reverse_dict = reverse_dict
+    def load_namespace(self, namespace_root):
+        namespace_root = tuple(namespace_root)
+        root = self._namespaces.pop(namespace_root)
+        for name, resolver, constraints, kwargs, decorators in root[1].flatten():
+            constraints = root[2] + constraints
+            kw = root[3].copy()
+            kw.update(kwargs)
+            kwargs = kw
+            decorators = root[4] + decorators
+            if name is None:
+                self.reverse_dict.appendlist(namespace_root + (resolver.func,), (constraints, kwargs, decorators))
+                if resolver.url_name is not None:
+                    self.reverse_dict.appendlist(namespace_root + (resolver.url_name,), (constraints, kwargs, decorators))
+            else:
+                app_root = root[0] + (resolver.app_name,)
+                self.app_dict[app_root + (resolver.app_name,)].append(name)
+                self._namespaces[namespace_root + (name,)] = app_root, resolver, constraints, kwargs, decorators
 
     def resolve(self, path, request=None):
         return self.resolver.resolve(path, request)
 
-    def resolve_namespace(self, lookup, current_app):
-        return tuple(self.resolver.resolve_namespace(lookup, current_app))
+    def reverse(self, viewname, *args, **kwargs):
+        if isinstance(viewname, (list, tuple)):
+            lookup = tuple(viewname)
+        elif isinstance(viewname, six.string_types):
+            lookup = tuple(viewname.split(':'))
+        else:
+            lookup = (viewname,)
+        for i in range(len(lookup) - 1):
+            if lookup[:i+1] in self._namespaces:
+                self.load_namespace(lookup[:i+1])
 
-    def search(self, lookup):
-        if lookup in self.reverse_dict:
-            for constraints, kwargs in self.reverse_dict.getlist(lookup):
-                yield constraints, kwargs
+        prefix = get_script_prefix()[:-1]
 
+        patterns = []
+        for constraints, default_kwargs, decorators in self.reverse_dict.getlist(lookup):
+            url = URL()
+            new_args, new_kwargs = args, kwargs
+            try:
+                for constraint in constraints:
+                    url, new_args, new_kwargs = constraint.construct(url, *new_args, **new_kwargs)
+                if new_kwargs:
+                    if any(name not in default_kwargs for name in new_kwargs):
+                        raise NoReverseMatch()
+                    for k, v in default_kwargs.items():
+                        if kwargs.get(k, v) != v:
+                            raise NoReverseMatch()
+                if new_args:
+                    raise NoReverseMatch()
+            except NoReverseMatch:
+                # We don't need the leading slash of the root pattern here
+                patterns.append(constraints[1:])
+            else:
+                url.path = urlquote(prefix + force_text(url.path), safe=RFC3986_SUBDELIMS + str('/~:@'))
+                if url.path.startswith('//'):
+                    url.path = '/%%2F%s' % url.path[2:]
+                return force_text(url)
+
+        if isinstance(lookup[-1], six.string_types):
+            viewname = ':'.join(lookup)
+
+        raise NoReverseMatch(
+            "Reverse for '%s' with arguments '%s' and keyword "
+            "arguments '%s' not found. %d pattern(s) tried: %s" %
+            (
+                viewname, args, kwargs, len(patterns),
+                [str('').join(c.describe() for c in constraints) for constraints in patterns],
+            )
+        )
+
+    def resolve_namespace(self, lookup, current_app=None):
+        return self.resolver.resolve_namespace(lookup, current_app)
+
+    @property
+    def urlconf_module(self):
+        return self.resolver.urlconf_module
+
+
+# PUSH IT DOWN A NOTCH
+# LAZILY LOAD NAMESPACES, NOT VIEWS
+# urls.py:
+# app_name = "polls"
+# decorators = [login_required()]
+# kwargs = {"something": "yes"}
+# urlpatterns = [
+#     url(r'comments/', include(comments_urls)),
+#     url(r'', poll_archive, name='archive'),
+# ]
+#
+# views.py:
+# @viewspec('name', kwargs={})
+# def my_view(request):
+#     return HttpResponse()
+#
+# or
+#
+# def my_view(request):
+#     return HttpResponse()
+#
+# view1 = viewspec('name', my_view, kwargs={'arg': 'yes'})
+# view2 = viewspec('name2', my_view, kwargs={'arg': 'no'})
 
 def resolve(path, urlconf=None, request=None):
     path = force_text(path)
@@ -100,17 +165,18 @@ def resolve(path, urlconf=None, request=None):
     return get_resolver(urlconf).resolve(path, request)
 
 
-def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None, strings_only=True):
+def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None):
     if urlconf is None:
         urlconf = get_urlconf()
 
     resolver = get_resolver(urlconf)
+    # TODO: raise nice exception for circular imports caused by reverse()
+    if not resolver.ready:
+        raise Exception("Can't reverse urls when the resolver hasn't been loaded. Use reverse_lazy() instead.")
     args = args or ()
     text_args = [force_text(x) for x in args]
     kwargs = kwargs or {}
     text_kwargs = {k: force_text(v) for k, v in kwargs.items()}
-
-    prefix = get_script_prefix()[:-1]  # Trailing slash is already there
 
     if isinstance(viewname, six.string_types):
         lookup = viewname.split(':')
@@ -123,38 +189,7 @@ def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None, st
 
     lookup = resolver.resolve_namespace(lookup, current_app)
 
-    patterns = []
-    for constraints, default_kwargs in resolver.search(lookup):
-        url = URL()
-        new_args, new_kwargs = text_args, text_kwargs
-        try:
-            for constraint in constraints:
-                url, new_args, new_kwargs = constraint.construct(url, *new_args, **new_kwargs)
-            if new_kwargs:
-                if any(name not in default_kwargs for name in new_kwargs):
-                    raise NoReverseMatch()
-                for k, v in default_kwargs.items():
-                    if kwargs.get(k, v) != v:
-                        raise NoReverseMatch()
-            if new_args:
-                raise NoReverseMatch()
-        except NoReverseMatch:
-            # We don't need the leading slash of the root pattern here
-            patterns.append(constraints[1:])
-        else:
-            url.path = urlquote(prefix + force_text(url.path), safe=RFC3986_SUBDELIMS + str('/~:@'))
-            if url.path.startswith('//'):
-                url.path = '/%%2F%s' % url.path[2:]
-            return force_text(url) if strings_only else url
-
-    raise NoReverseMatch(
-        "Reverse for '%s' with arguments '%s' and keyword "
-        "arguments '%s' not found. %d pattern(s) tried: %s" %
-        (
-            viewname, args, kwargs, len(patterns),
-            [str('').join(c.describe() for c in constraints) for constraints in patterns],
-        )
-    )
+    return resolver.reverse(lookup, *text_args, **text_kwargs)
 
 
 reverse_lazy = lazy(reverse, URL, six.text_type)

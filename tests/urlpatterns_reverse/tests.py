@@ -31,6 +31,7 @@ from django.utils.deprecation import RemovedInDjango20Warning
 
 from . import middleware, urlconf_outer, views
 from .views import empty_view
+from .utils import URLObject
 
 resolve_test_data = (
     # These entries are in the format: (path, url_name, app_name, namespace, view_name, decorators, func, args, kwargs)
@@ -241,26 +242,6 @@ test_data = (
     # Security tests
     ('security', '/%2Fexample.com/security/', ['/example.com'], {}),
 )
-
-
-class URLObject(object):
-    urlpatterns = [
-        url(r'^inner/$', views.empty_view, name='urlobject-view'),
-        url(r'^inner/(?P<arg1>[0-9]+)/(?P<arg2>[0-9]+)/$', views.empty_view, name='urlobject-view'),
-        url(r'^inner/\+\\\$\*/$', views.empty_view, name='urlobject-special-view'),
-    ]
-
-    def __init__(self, app_name, namespace=None):
-        self.app_name = app_name
-        self.namespace = namespace
-
-    @property
-    def urls(self):
-        return self.urlpatterns, self.app_name, self.namespace
-
-    @property
-    def app_urls(self):
-        return self.urlpatterns, self.app_name
 
 
 @override_settings(ROOT_URLCONF='urlpatterns_reverse.no_urls')
