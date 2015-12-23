@@ -7,7 +7,7 @@ from . import Tags, Warning, register
 def check_url_config(app_configs, **kwargs):
     from django.urls import get_resolver
     resolver = get_resolver()
-    return check_resolver(resolver)
+    return check_resolver(resolver.resolver)
 
 
 def check_resolver(resolver):

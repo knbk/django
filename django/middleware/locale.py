@@ -65,7 +65,7 @@ class LocaleMiddleware(object):
         Returns `True` if the `LocaleRegexURLResolver` is used
         at root level of the urlpatterns, else it returns `False`.
         """
-        for name, resolver in get_resolver(None).resolvers:
+        for name, resolver in get_resolver(None).resolver.resolvers:
             if resolver.constraints and isinstance(resolver.constraints[0], LocalePrefix):
                 return True
         return False

@@ -2,18 +2,18 @@ from __future__ import unicode_literals
 
 from collections import defaultdict
 from importlib import import_module
-from threading import local, Lock
+from threading import local
 
-from django.template.context import BaseContext
 from django.urls.exceptions import NoReverseMatch
 from django.utils import lru_cache, six
 from django.utils.datastructures import MultiValueDict
 from django.utils.encoding import force_text
-from django.utils.functional import lazy
+from django.utils.functional import cached_property, lazy
 from django.utils.http import RFC3986_SUBDELIMS, urlquote
+
 from .constraints import RegexPattern
 from .resolvers import Resolver
-from .utils import URL
+from .utils import URL, get_callable
 
 # SCRIPT_NAME prefixes for each thread are stored here. If there's no entry for
 # the current thread (which is the only one we ever access), it is assumed to
@@ -35,10 +35,12 @@ def get_resolver(urlconf=None):
 class Dispatcher(object):
     def __init__(self, urlconf):
         self.ready = False
-        self.urlconf = urlconf
+        self.urlconf_name = urlconf
         self.resolver = Resolver(urlconf, constraints=[RegexPattern('^/')])
 
         self._namespaces = {}
+        self._loaded = set()
+        self._callbacks = set()
         self.reverse_dict = MultiValueDict()
         self.app_dict = defaultdict(list)
 
@@ -51,13 +53,21 @@ class Dispatcher(object):
                 self.reverse_dict.appendlist((resolver.func,), (constraints, kwargs, decorators))
                 if resolver.url_name is not None:
                     self.reverse_dict.appendlist((resolver.url_name,), (constraints, kwargs, decorators))
+                if hasattr(resolver, '_func_str'):
+                    self._callbacks.add(resolver._func_str)
             else:  # a subnamespace
                 self.app_dict[(resolver.app_name,)].append(name)
                 self._namespaces[(name,)] = (resolver.app_name,), resolver, constraints, kwargs, decorators
+        self._loaded.add(())
         self.ready = True
 
-    def load_namespace(self, namespace_root):
-        namespace_root = tuple(namespace_root)
+    def _load_namespace(self, namespace_root):
+        if namespace_root not in self._namespaces:
+            raise NoReverseMatch(
+                "%s is not a registered namespace inside '%s'" %
+                (namespace_root[-1], ':'.join(namespace_root[:-1]))
+            )
+
         root = self._namespaces.pop(namespace_root)
         for name, resolver, constraints, kwargs, decorators in root[1].flatten():
             constraints = root[2] + constraints
@@ -68,11 +78,21 @@ class Dispatcher(object):
             if name is None:
                 self.reverse_dict.appendlist(namespace_root + (resolver.func,), (constraints, kwargs, decorators))
                 if resolver.url_name is not None:
-                    self.reverse_dict.appendlist(namespace_root + (resolver.url_name,), (constraints, kwargs, decorators))
+                    self.reverse_dict.appendlist(
+                        namespace_root + (resolver.url_name,),
+                        (constraints, kwargs, decorators)
+                    )
             else:
                 app_root = root[0] + (resolver.app_name,)
                 self.app_dict[app_root + (resolver.app_name,)].append(name)
                 self._namespaces[namespace_root + (name,)] = app_root, resolver, constraints, kwargs, decorators
+        self._loaded.add(namespace_root)
+
+    def load_namespace(self, namespace):
+        namespace = tuple(namespace)
+        for i, _ in enumerate(namespace, start=1):
+            if namespace[:i] not in self._loaded:
+                self._load_namespace(namespace[:i])
 
     def resolve(self, path, request=None):
         return self.resolver.resolve(path, request)
@@ -84,16 +104,18 @@ class Dispatcher(object):
             lookup = tuple(viewname.split(':'))
         else:
             lookup = (viewname,)
-        for i in range(len(lookup) - 1):
-            if lookup[:i+1] in self._namespaces:
-                self.load_namespace(lookup[:i+1])
+
+        text_args = [force_text(x) for x in args]
+        text_kwargs = {k: force_text(v) for k, v in kwargs.items()}
+
+        self.load_namespace(lookup[:-1])
 
         prefix = get_script_prefix()[:-1]
 
         patterns = []
         for constraints, default_kwargs, decorators in self.reverse_dict.getlist(lookup):
             url = URL()
-            new_args, new_kwargs = args, kwargs
+            new_args, new_kwargs = text_args, text_kwargs
             try:
                 for constraint in constraints:
                     url, new_args, new_kwargs = constraint.construct(url, *new_args, **new_kwargs)
@@ -127,15 +149,35 @@ class Dispatcher(object):
         )
 
     @lru_cache.lru_cache(maxsize=None)
-    def resolve_namespace(self, lookup, current_app=None):
+    def _resolve_namespace(self, lookup, current_app):
         lookup = list(lookup)
         if current_app is not None:
             current_app = list(current_app)
         return self.resolver.resolve_namespace(lookup, current_app)
 
-    @property
+    def resolve_namespace(self, lookup, current_app=None):
+        lookup = tuple(lookup)
+        current_app = tuple(current_app) if current_app is not None else ()
+        return self._resolve_namespace(lookup, current_app)
+
+    @cached_property
     def urlconf_module(self):
-        return self.resolver.urlconf_module
+        if isinstance(self.urlconf_name, six.string_types):
+            return import_module(self.urlconf_name)
+        else:
+            return self.urlconf_name
+
+    def _is_callback(self, name):
+        return name in self._callbacks
+
+    def resolve_error_handler(self, view_type):
+        callback = getattr(self.urlconf_module, 'handler%s' % view_type, None)
+        if not callback:
+            # No handler specified in file; use default
+            # Lazy import, since django.urls imports this file
+            from django.conf import urls
+            callback = getattr(urls, 'handler%s' % view_type)
+        return get_callable(callback), {}
 
 
 # PUSH IT DOWN A NOTCH
@@ -178,9 +220,7 @@ def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None):
     if not resolver.ready:
         raise Exception("Can't reverse urls when the resolver hasn't been loaded. Use reverse_lazy() instead.")
     args = args or ()
-    text_args = [force_text(x) for x in args]
     kwargs = kwargs or {}
-    text_kwargs = {k: force_text(v) for k, v in kwargs.items()}
 
     if isinstance(viewname, six.string_types):
         lookup = viewname.split(':')
@@ -193,7 +233,7 @@ def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None):
 
     lookup = resolver.resolve_namespace(tuple(lookup), tuple(current_app))
 
-    return resolver.reverse(lookup, *text_args, **text_kwargs)
+    return resolver.reverse(lookup, *args, **kwargs)
 
 
 reverse_lazy = lazy(reverse, URL, six.text_type)

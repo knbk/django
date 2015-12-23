@@ -86,8 +86,6 @@ def url(constraints, view, kwargs=None, name=None, decorators=None):
 
     if isinstance(view, (list, tuple)):
         resolvers, app_name, namespace = view
-        if namespace and app_name is None:
-            app_name = namespace
         return namespace, Resolver(resolvers, app_name, constraints=constraints, kwargs=kwargs, decorators=decorators)
     elif callable(view):
         return None, ResolverEndpoint(view, name, constraints=constraints, kwargs=kwargs, decorators=decorators)

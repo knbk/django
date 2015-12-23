@@ -23,15 +23,15 @@ from django.test import (
 from django.test.utils import override_script_prefix
 from django.urls import (
     NoReverseMatch, Resolver, Resolver404, ResolverEndpoint, ResolverMatch,
-    get_callable, get_resolver, resolve, resolve_error_handler, reverse,
+    get_callable, get_resolver, resolve, reverse,
     reverse_lazy,
 )
 from django.utils import six
 from django.utils.deprecation import RemovedInDjango20Warning
 
 from . import middleware, urlconf_outer, views
-from .views import empty_view
 from .utils import URLObject
+from .views import empty_view
 
 resolve_test_data = (
     # These entries are in the format: (path, url_name, app_name, namespace, view_name, decorators, func, args, kwargs)
@@ -251,14 +251,12 @@ class NoURLPatternsTests(SimpleTestCase):
         """
         Resolver should raise an exception when no urlpatterns exist.
         """
-        resolver = get_resolver(settings.ROOT_URLCONF)
-
         self.assertRaisesMessage(
             ImproperlyConfigured,
             "The included URLconf 'urlpatterns_reverse.no_urls' does not "
             "appear to have any patterns in it. If you see valid patterns in "
             "the file then the issue is probably caused by a circular import.",
-            getattr, resolver, 'resolvers'
+            get_resolver, settings.ROOT_URLCONF
         )
 
 
@@ -348,7 +346,7 @@ class ResolverTests(unittest.TestCase):
         """
         # Pick a resolver from a namespaced URLconf
         resolver = get_resolver('urlpatterns_reverse.namespace_urls')
-        sub_resolver = resolver['test-ns1']
+        sub_resolver = resolver.resolver['test-ns1']
         self.assertIn('<ResolverEndpoint list>', repr(sub_resolver))
 
     def test_reverse_lazy_object_coercion_by_resolve(self):
@@ -871,17 +869,15 @@ class ErrorHandlerResolutionTests(SimpleTestCase):
 
     def test_named_handlers(self):
         handler = (empty_view, {})
-        urlconf_module = self.resolver.urlconf_module
-        self.assertEqual(resolve_error_handler(urlconf_module, 400), handler)
-        self.assertEqual(resolve_error_handler(urlconf_module, 404), handler)
-        self.assertEqual(resolve_error_handler(urlconf_module, 500), handler)
+        self.assertEqual(self.resolver.resolve_error_handler(400), handler)
+        self.assertEqual(self.resolver.resolve_error_handler(404), handler)
+        self.assertEqual(self.resolver.resolve_error_handler(500), handler)
 
-    def test_callable_handers(self):
+    def test_callable_handlers(self):
         handler = (empty_view, {})
-        urlconf_module = self.callable_resolver.urlconf_module
-        self.assertEqual(resolve_error_handler(urlconf_module, 400), handler)
-        self.assertEqual(resolve_error_handler(urlconf_module, 404), handler)
-        self.assertEqual(resolve_error_handler(urlconf_module, 500), handler)
+        self.assertEqual(self.callable_resolver.resolve_error_handler(400), handler)
+        self.assertEqual(self.callable_resolver.resolve_error_handler(404), handler)
+        self.assertEqual(self.callable_resolver.resolve_error_handler(500), handler)
 
 
 @override_settings(ROOT_URLCONF='urlpatterns_reverse.urls_without_full_import')

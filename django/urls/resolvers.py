@@ -141,11 +141,11 @@ class Resolver(BaseResolver):
         """
         constraints, kwargs, decorators = [], BaseContext(), []
         kwargs.dicts[0] = {}
-        for namespace, resolver in self.resolvers:
+        for namespace, resolver in reversed(self.resolvers):
             constraints.extend(resolver.constraints)
             kwargs.push(resolver.kwargs)
             decorators.extend(resolver.decorators)
-            if resolver.app_name:
+            if namespace or resolver.app_name:
                 yield (namespace or resolver.app_name), resolver, list(constraints), kwargs.flatten(), list(decorators)
             elif hasattr(resolver, 'flatten'):
                 for n, r, c, kw, d in resolver.flatten():

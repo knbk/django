@@ -2,6 +2,7 @@ from django.conf.urls import url
 
 from . import views
 
+
 class URLObject(object):
     urlpatterns = [
         url(r'^inner/$', views.empty_view, name='urlobject-view'),
