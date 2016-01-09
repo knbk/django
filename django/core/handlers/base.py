@@ -13,7 +13,7 @@ from django.core.exceptions import (
 )
 from django.db import connections, transaction
 from django.http.multipartparser import MultiPartParserError
-from django.urls import get_dispatcher, set_urlconf
+from django.urls import get_dispatcher, get_urlconf, set_urlconf
 from django.utils import six
 from django.utils.deprecation import RemovedInDjango20Warning
 from django.utils.encoding import force_text
@@ -111,9 +111,8 @@ class BaseHandler(object):
         # the try/except so we don't get a spurious "unbound local
         # variable" exception in the event an exception is raised before
         # dispatcher is set
-        urlconf = settings.ROOT_URLCONF
-        set_urlconf(urlconf)
-        dispatcher = get_dispatcher(urlconf)
+        set_urlconf(None)
+        dispatcher = get_dispatcher(get_urlconf())
         # Use a flag to check if the response was rendered to prevent
         # multiple renderings or to force rendering if necessary.
         response_is_rendered = False
@@ -126,17 +125,10 @@ class BaseHandler(object):
                     break
 
             if response is None:
-                if hasattr(request, 'dispatcher'):
-                    urlconf = getattr(request.dispatcher, 'urlconf', None)
-                    set_urlconf(urlconf)
-                    dispatcher = request.dispatcher
-                elif hasattr(request, 'urlconf'):
+                if hasattr(request, 'urlconf'):
                     # Reset url dispatcher with a custom URLconf.
-                    urlconf = request.urlconf
-                    set_urlconf(urlconf)
-                    dispatcher = request.dispatcher = get_dispatcher(urlconf)
-                else:
-                    request.dispatcher = dispatcher
+                    set_urlconf(request.urlconf)
+                    dispatcher = get_dispatcher(get_urlconf())
 
                 resolver_match = dispatcher.resolve(request.path_info, request)
                 callback, callback_args, callback_kwargs = resolver_match

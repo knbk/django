@@ -106,7 +106,7 @@ def get_resolver(urlconf=None):
     if urlconf is None:
         from django.conf import settings
         urlconf = settings.ROOT_URLCONF
-    return Resolver(URLPattern([ScriptPrefix()], URLConf(urlconf)))
+    return URLPattern([ScriptPrefix()], URLConf(urlconf)).as_resolver()
 
 
 class BaseResolver(object):

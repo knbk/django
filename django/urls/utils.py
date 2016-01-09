@@ -2,7 +2,7 @@ from __future__ import unicode_literals
 
 from importlib import import_module
 
-from django.core.exceptions import ViewDoesNotExist
+from django.core.exceptions import ImproperlyConfigured, ViewDoesNotExist
 from django.utils import lru_cache, six
 from django.utils.encoding import escape_query_string, iri_to_uri
 from django.utils.http import RFC3986_SUBDELIMS, urlquote
@@ -65,6 +65,14 @@ def get_mod_func(callback):
     except ValueError:
         return callback, ''
     return callback[:dot], callback[dot + 1:]
+
+
+@lru_cache.lru_cache(maxsize=None)
+def get_urlconf_module(urlconf):
+    try:
+        return import_module(urlconf)
+    except AttributeError:
+        raise ImproperlyConfigured("'%s' is not a valid import path." % urlconf)
 
 
 class URL(object):

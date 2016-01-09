@@ -33,7 +33,7 @@ class Dispatcher(object):
 
         self._lock = Lock()
         self._namespaces = {
-            (): ((), URLPattern([ScriptPrefix()], URLConf(self.urlconf_name))),
+            (): ((), URLPattern([ScriptPrefix()], URLConf(urlconf))),
         }
         self._loaded = set()
         self._callbacks = set()
@@ -113,8 +113,7 @@ class Dispatcher(object):
         self.load(lookup)
 
         patterns = []
-        for value in self.reverse_dict.getlist(lookup):
-            constraints, default_kwargs = value
+        for constraints, default_kwargs in self.reverse_dict.getlist(lookup):
             url = URL()
             new_args, new_kwargs = text_args, text_kwargs
             try:
