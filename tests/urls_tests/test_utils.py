@@ -42,10 +42,10 @@ url_data = (
 class URLTests(SimpleTestCase):
     def test_url_path(self):
         for path, query, fragment, url_repr, expected in path_data:
-            url = URL(path=path, query_string=query, fragment=fragment)
+            url = URL(path=path, query=query, fragment=fragment)
             self.assertEqual(
                 str(url), expected,
-                "URL(path=%r, query_string=%r, fragment=%r) does not match %r" %
+                "URL(path=%r, query=%r, fragment=%r) does not match %r" %
                 (path, query, fragment, expected),
             )
             self.assertEqual(repr(url), url_repr)
@@ -64,7 +64,7 @@ class URLTests(SimpleTestCase):
         self.assertEqual(url.scheme, 'http')
         self.assertEqual(url.host, 'example.org')
         self.assertEqual(url.path, '/test/')
-        self.assertEqual(url.query_string, 'query=now')
+        self.assertEqual(url.query, 'query=now')
         self.assertEqual(url.fragment, 'fragment')
 
     def test_from_request(self):
@@ -73,7 +73,7 @@ class URLTests(SimpleTestCase):
         self.assertEqual(url.scheme, 'http')
         self.assertEqual(url.host, 'testserver')
         self.assertEqual(url.path, '/test/')
-        self.assertEqual(url.query_string, 'query=now')
+        self.assertEqual(url.query, 'query=now')
         # HttpRequest does not capture the fragment
         self.assertEqual(url.fragment, '')
 
@@ -84,5 +84,5 @@ class URLTests(SimpleTestCase):
         self.assertEqual(url.scheme, copied_url.scheme)
         self.assertEqual(url.host, copied_url.host)
         self.assertEqual(url.path, copied_url.path)
-        self.assertEqual(url.query_string, copied_url.query_string)
+        self.assertEqual(url.query, copied_url.query)
         self.assertEqual(url.fragment, copied_url.fragment)

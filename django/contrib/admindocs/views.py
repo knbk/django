@@ -12,7 +12,9 @@ from django.core.exceptions import ImproperlyConfigured
 from django.db import models
 from django.http import Http404
 from django.template.engine import Engine
-from django.urls import get_dispatcher, get_mod_func, get_urlconf, reverse
+from django.urls import (
+    describe_constraints, get_dispatcher, get_mod_func, get_urlconf, reverse,
+)
 from django.utils.decorators import method_decorator
 from django.utils.inspect import (
     func_accepts_kwargs, func_accepts_var_args, func_has_no_args,
@@ -376,7 +378,7 @@ def extract_views_from_urlpatterns(urlpatterns, base='', namespace=None):
             raise TypeError(_("%s does not appear to be a URLPattern object") % urlpattern)
         if urlpattern.is_endpoint():
             views.append((
-                urlpattern.target.view, base + ''.join(c.describe() for c in urlpattern.constraints),
+                urlpattern.target.view, base + describe_constraints(urlpattern.constraints),
                 namespace, urlpattern.target.url_name,
             ))
         else:
@@ -386,7 +388,7 @@ def extract_views_from_urlpatterns(urlpatterns, base='', namespace=None):
                 continue
             views.extend(extract_views_from_urlpatterns(
                 sub_urlpatterns,
-                base + ''.join(c.describe() for c in urlpattern.constraints),
+                base + describe_constraints(urlpattern.constraints),
                 (namespace or []) + (name and [name] or []),
             ))
     return views

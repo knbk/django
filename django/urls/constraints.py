@@ -13,18 +13,18 @@ from .exceptions import NoReverseMatch, Resolver404
 
 
 class Constraint(object):
-    def describe(self):
+    def describe(self, url_object):
         """
         Return a concise description to be used as an error message.
         """
-        return ""
+        raise NotImplementedError("Constraint subclasses must implement describe()")
 
     def match(self, path, request=None):
         """
         If this constraint matches, return (new_path, args, kwargs).
         Otherwise, raise a Resolver404.
         """
-        raise NotImplementedError("Constraint subclasses should implement match()")
+        raise NotImplementedError("Constraint subclasses must implement match()")
 
     def construct(self, url_object, *args, **kwargs):
         """
@@ -33,16 +33,19 @@ class Constraint(object):
         Raise NoReverseMatch if the url cannot be reconstructed with these
         arguments.
         """
-        raise NotImplementedError("Constraint subclasses should implement construct()")
+        raise NotImplementedError("Constraint subclasses must implement construct()")
 
 
 class RegexPattern(Constraint):
     def __init__(self, regex):
         self._regex = force_text(regex)
 
-    def describe(self):
+    def describe(self, url_object):
         pattern = self.regex.pattern
-        return str(pattern[1:]) if pattern.startswith('^') else str(pattern)
+        if url_object.path and pattern.startswith('^'):
+            pattern = pattern[1:]
+        url_object.path += pattern
+        return url_object
 
     def __repr__(self):
         return '<RegexPattern regex=%r>' % self._regex
@@ -141,6 +144,9 @@ class LocalePrefix(LocalizedRegexPattern):
 
 
 class ScriptPrefix(Constraint):
+    def describe(self, url_object):
+        return url_object
+
     def match(self, path, request=None):
         if not path.startswith('/'):
             raise Resolver404()

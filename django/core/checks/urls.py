@@ -34,12 +34,9 @@ def describe_pattern(urlpattern):
     """
     Format the URL pattern for display in warning messages.
     """
-    from django.urls import RegexPattern
+    from django.urls import describe_constraints
 
-    description = ''.join(constraint.describe() for constraint in urlpattern.constraints)
-    if (urlpattern.constraints and isinstance(urlpattern.constraints[0], RegexPattern)
-            and urlpattern.constraints[0].regex.pattern.startswith('^')):
-        description = '^%s' % description
+    description = describe_constraints(urlpattern.constraints)
     description = "'%s'" % description
     if getattr(urlpattern.target, 'url_name', False):
         description += " [name='{}']".format(urlpattern.target.url_name)

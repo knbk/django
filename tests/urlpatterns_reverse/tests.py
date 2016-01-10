@@ -316,7 +316,7 @@ class URLPatternReverse(SimpleTestCase):
             # this url exists, but requires an argument
             reverse("people", args=[])
         except NoReverseMatch as e:
-            pattern_description = r"1 pattern(s) tried: ['people/(?P<name>\\w+)/$']"
+            pattern_description = r"1 pattern(s) tried: ['^people/(?P<name>\\w+)/$']"
             self.assertIn(pattern_description, str(e))
         else:
             # we can't use .assertRaises, since we want to inspect the

@@ -2,12 +2,19 @@ from __future__ import unicode_literals
 
 from importlib import import_module
 
-from django.core.exceptions import ImproperlyConfigured, ViewDoesNotExist
+from django.core.exceptions import ViewDoesNotExist
 from django.utils import lru_cache, six
 from django.utils.encoding import escape_query_string, iri_to_uri
 from django.utils.http import RFC3986_SUBDELIMS, urlquote
 from django.utils.module_loading import module_has_submodule
 from django.utils.six.moves.urllib.parse import urlsplit, urlunsplit
+
+
+def describe_constraints(constraints):
+    url = URL()
+    for constraint in constraints:
+        url = constraint.describe(url)
+    return url.describe()
 
 
 @lru_cache.lru_cache(maxsize=None)
@@ -67,23 +74,16 @@ def get_mod_func(callback):
     return callback[:dot], callback[dot + 1:]
 
 
-@lru_cache.lru_cache(maxsize=None)
-def get_urlconf_module(urlconf):
-    try:
-        return import_module(urlconf)
-    except AttributeError:
-        raise ImproperlyConfigured("'%s' is not a valid import path." % urlconf)
-
-
 class URL(object):
-    __slots__ = ['scheme', 'host', 'path', 'query_string', 'fragment']
+    __slots__ = ['scheme', 'host', 'path', 'query', 'fragment', 'params']
 
-    def __init__(self, scheme='', host='', path='', query_string='', fragment=''):
+    def __init__(self, scheme='', host='', path='', query='', fragment='', params=None):
         self.scheme = scheme
         self.host = host
         self.path = path
-        self.query_string = query_string
+        self.query = query
         self.fragment = fragment
+        self.params = params or {}
 
     @classmethod
     def from_location(cls, location):
@@ -110,12 +110,20 @@ class URL(object):
             self.scheme,
             self.host,
             path,
-            escape_query_string(self.query_string) if self.query_string else '',
+            escape_query_string(self.query) if self.query else '',
             iri_to_uri(self.fragment) if self.fragment else ''
         ))
+
+    def describe(self):
+        description = urlunsplit((self.scheme, self.host, self.path, self.query, self.fragment))
+        if self.params:
+            description += ' [%s]' % (
+                ', '.join('%s=%r' % (k, v) for k, v in self.params.items()),
+            )
+        return description
 
     def copy(self):
         return type(self)(
             self.scheme, self.host, self.path,
-            self.query_string, self.fragment
+            self.query, self.fragment, self.params,
         )

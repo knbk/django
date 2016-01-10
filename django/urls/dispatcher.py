@@ -15,7 +15,7 @@ from django.utils.translation import override
 from .constraints import ScriptPrefix
 from .exceptions import NoReverseMatch, Resolver404
 from .resolvers import get_resolver
-from .utils import URL, get_callable
+from .utils import URL, describe_constraints, get_callable
 
 
 @lru_cache.lru_cache(maxsize=None)
@@ -142,7 +142,7 @@ class Dispatcher(object):
                 "arguments '%s' not found. %d pattern(s) tried: %s" %
                 (
                     viewname, args, kwargs, len(patterns),
-                    [str('').join(c.describe() for c in pattern) for pattern in patterns],
+                    [str(describe_constraints(constraints)) for constraints in patterns],
                 )
             )
         else:
