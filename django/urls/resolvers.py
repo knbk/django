@@ -26,6 +26,13 @@ class ResolverMatch(object):
         self.app_names = app_names or []
         self.namespaces = namespaces or []
 
+    def preprocess(self, request):
+        preprocessors = getattr(self.callback, 'preprocessors', [])
+        args, kwargs = self.args, self.kwargs
+        for preprocessor in reversed(preprocessors):
+            args, kwargs = preprocessor(*args, **kwargs)
+        self.args, self.kwargs = args, kwargs
+
     @cached_property
     def func(self):
         return self.endpoint.func
@@ -167,15 +174,16 @@ class Resolver(BaseResolver):
 
         tried = []
         for resolver in self.resolvers:
-            try:
-                sub_match = resolver.resolve(new_path, request)
-            except Resolver404 as e:
-                if e.tried:
-                    tried.extend([resolver] + t for t in e.tried)
-                else:
-                    tried.append([resolver])
-                continue
-            return ResolverMatch.from_submatch(sub_match, args, kwargs, self.app_name, self.namespace)
+            while True:
+                try:
+                    sub_match = next(resolver.resolve(new_path, request))
+                except Resolver404 as e:
+                    if e.tried:
+                        tried.extend([resolver] + t for t in e.tried)
+                    else:
+                        tried.append([resolver])
+                    break
+                yield ResolverMatch.from_submatch(sub_match, args, kwargs, self.app_name, self.namespace)
         raise Resolver404({'path': new_path, 'tried': tried})
 
 
@@ -204,4 +212,4 @@ class ResolverEndpoint(BaseResolver):
 
     def resolve(self, path, request=None):
         new_path, args, kwargs = self.match(path, request)
-        return ResolverMatch(self, args, kwargs)
+        yield ResolverMatch(self, args, kwargs)

@@ -127,3 +127,10 @@ class URL(object):
             self.scheme, self.host, self.path,
             self.query, self.fragment, self.params,
         )
+
+
+def preprocessor(*processors):
+    def decorator(func):
+        func.preprocessors = list(processors) + getattr(func, 'preprocessors', [])
+        return func
+    return decorator

@@ -23,7 +23,7 @@ def resolve(path, urlconf=None, request=None):
     path = force_text(path)
     if urlconf is None:
         urlconf = get_urlconf()
-    return get_resolver(urlconf).resolve(path, request)
+    return get_dispatcher(urlconf).resolve(path, request)
 
 
 def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None):

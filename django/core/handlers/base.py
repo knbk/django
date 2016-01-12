@@ -130,17 +130,22 @@ class BaseHandler(object):
                     set_urlconf(request.urlconf)
                     dispatcher = get_dispatcher(get_urlconf())
 
-                resolver_match = dispatcher.resolve(request.path_info, request)
-                callback, callback_args, callback_kwargs = resolver_match
-                request.resolver_match = resolver_match
+                resolver_match = None
+                try:
+                    resolver_match = dispatcher.resolve(request.path_info, request)
+                except Exception as e:
+                    response = self.process_exception_by_middleware(e, request)
+                else:
+                    callback, callback_args, callback_kwargs = resolver_match
+                    request.resolver_match = resolver_match
 
-                # Apply view middleware
-                for middleware_method in self._view_middleware:
-                    response = middleware_method(request, callback, callback_args, callback_kwargs)
-                    if response:
-                        break
+                    # Apply view middleware
+                    for middleware_method in self._view_middleware:
+                        response = middleware_method(request, callback, callback_args, callback_kwargs)
+                        if response:
+                            break
 
-            if response is None:
+            if response is None and resolver_match is not None:
                 wrapped_callback = self.make_view_atomic(callback)
                 try:
                     response = wrapped_callback(request, *callback_args, **callback_kwargs)

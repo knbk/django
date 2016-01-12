@@ -95,7 +95,13 @@ class Dispatcher(object):
                 self.load_namespace(lookup[:i])
 
     def resolve(self, path, request=None):
-        return self.resolver.resolve(path, request)
+        for match in self.resolver.resolve(path, request):
+            try:
+                match.preprocess(request)
+            except Resolver404:
+                continue
+            else:
+                return match
 
     def reverse(self, viewname, *args, **kwargs):
         if isinstance(viewname, (list, tuple)):  # Common case: resolved by self.resolve_namespace().
