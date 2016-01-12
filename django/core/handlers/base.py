@@ -107,7 +107,7 @@ class BaseHandler(object):
     def get_response(self, request):
         "Returns an HttpResponse object for the given HttpRequest"
 
-        # Setup default url dispatcher for this thread, this code is outside
+        # Reset default url dispatcher for this thread, this code is outside
         # the try/except so we don't get a spurious "unbound local
         # variable" exception in the event an exception is raised before
         # dispatcher is set

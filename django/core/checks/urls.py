@@ -14,7 +14,7 @@ def check_url_config(app_configs, **kwargs):
 
 def check_urlconf(urlconf):
     """
-    Recursively check the urlconf.
+    Recursively check the URLconf.
     """
     warnings = []
     for urlpattern in urlconf.urlpatterns:
@@ -22,7 +22,7 @@ def check_urlconf(urlconf):
             warnings.extend(check_pattern_name(urlpattern))
         else:
             warnings.extend(check_include_trailing_dollar(urlpattern))
-            # check resolver recursively
+            # check URLconf recursively
             warnings.extend(check_urlconf(urlpattern.target))
 
         warnings.extend(check_pattern_startswith_slash(urlpattern))

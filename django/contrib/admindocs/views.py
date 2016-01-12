@@ -150,6 +150,7 @@ class ViewDetailView(BaseAdminDocsView):
     def get_context_data(self, **kwargs):
         view = self.kwargs['view']
         dispatcher = get_dispatcher(get_urlconf())
+        # Private API, may not exist if using a custom dispatcher
         if not hasattr(dispatcher, '_is_callback'):
             raise Http404
         if dispatcher._is_callback(view):
@@ -364,7 +365,7 @@ def get_readable_field_data_type(field):
     return field.description % field.__dict__
 
 
-def extract_views_from_urlpatterns(urlpatterns, base='', namespace=None):
+def extract_views_from_urlpatterns(urlpatterns, base=None, namespace=None):
     """
     Return a list of views from a list of urlpatterns.
 
@@ -378,7 +379,7 @@ def extract_views_from_urlpatterns(urlpatterns, base='', namespace=None):
             raise TypeError(_("%s does not appear to be a URLPattern object") % urlpattern)
         if urlpattern.is_endpoint():
             views.append((
-                urlpattern.target.view, base + describe_constraints(urlpattern.constraints),
+                urlpattern.target.view, describe_constraints((base or []) + urlpattern.constraints),
                 namespace, urlpattern.target.url_name,
             ))
         else:
@@ -387,8 +388,7 @@ def extract_views_from_urlpatterns(urlpatterns, base='', namespace=None):
             except ImportError:
                 continue
             views.extend(extract_views_from_urlpatterns(
-                sub_urlpatterns,
-                base + describe_constraints(urlpattern.constraints),
+                sub_urlpatterns, (base or []) + urlpattern.constraints,
                 (namespace or []) + (name and [name] or []),
             ))
     return views
