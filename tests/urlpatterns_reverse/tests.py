@@ -1038,6 +1038,40 @@ class ErroneousViewTests(SimpleTestCase):
             reverse(views.empty_view)
 
 
+@override_settings(ROOT_URLCONF='urlpatterns_reverse.path_urls')
+class SimplifiedURLTests(SimpleTestCase):
+
+    def test_path_lookup_without_parameters(self):
+        match = resolve('/articles/2003/')
+        self.assertEqual(match.url_name, 'articles-2003')
+        self.assertEqual(match.args, ())
+        self.assertEqual(match.kwargs, {})
+
+    def test_path_lookup_with_typed_parameters(self):
+        match = resolve('/articles/2015/')
+        self.assertEqual(match.url_name, 'articles-year')
+        self.assertEqual(match.args, ())
+        self.assertEqual(match.kwargs, {'year': 2015})
+
+    def test_path_lookup_with_multiple_paramaters(self):
+        match = resolve('/articles/2015/04/12/')
+        self.assertEqual(match.url_name, 'articles-year-month-day')
+        self.assertEqual(match.args, ())
+        self.assertEqual(match.kwargs, {
+            'year': 2015,
+            'month': 4,
+            'day': 12,
+        })
+
+    def test_path_reverse_without_parameter(self):
+        url = reverse('articles-year-month-day', kwargs={
+            'year': 2015,
+            'month': 4,
+            'day': 12,
+        })
+        self.assertEqual(url, '/articles/2015/4/12/')
+
+
 class ViewLoadingTests(SimpleTestCase):
     def test_view_loading(self):
         self.assertEqual(get_callable('urlpatterns_reverse.views.empty_view'), empty_view)

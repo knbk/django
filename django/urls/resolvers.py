@@ -513,3 +513,26 @@ class LocaleRegexURLResolver(RegexURLResolver):
                 regex_string = '^%s/' % language_code
             self._regex_dict[language_code] = re.compile(regex_string)
         return self._regex_dict[language_code]
+
+
+class TypedURL(object):
+    def __init__(self, *args, **kwargs):
+        self.converters = kwargs.pop('converters', {})
+        super(TypedURL, self).__init__(*args, **kwargs)
+
+    def resolve(self, path):
+        match = super(TypedURL, self).resolve(path)
+        if match is not None:
+            kwargs = match.kwargs
+            for param, converter in self.converters.items():
+                if param in kwargs:
+                    kwargs[param] = converter.to_python(kwargs[param])
+        return match
+
+
+class TypedRegexURLPattern(TypedURL, RegexURLPattern):
+    pass
+
+
+class TypedRegexURLResolver(TypedURL, RegexURLResolver):
+    pass

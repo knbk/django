@@ -151,6 +151,18 @@ def root_urlconf_changed(**kwargs):
 
 
 @receiver(setting_changed)
+def custom_url_converters_changed(**kwargs):
+    # XXX: Not sure if this has any use. In practice you want to replace the
+    # converters before calling ``path``, but unless we make the
+    #     path => regex
+    # conversion lazy, this has no use. But to make the conversion lazy only
+    # to please the testers is not something I feel comfortable with.
+    if kwargs['setting'] == 'CUSTOM_URL_CONVERTERS':
+        from django.urls.converters import get_converters
+        get_converters.cache_clear()
+
+
+@receiver(setting_changed)
 def static_storage_changed(**kwargs):
     if kwargs['setting'] in {
         'STATICFILES_STORAGE',

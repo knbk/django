@@ -1,3 +1,4 @@
+import re
 from threading import local
 from urllib.parse import urlsplit, urlunsplit
 
@@ -5,8 +6,11 @@ from django.utils.encoding import iri_to_uri
 from django.utils.functional import lazy
 from django.utils.translation import override
 
+from .converters import get_converter
 from .exceptions import NoReverseMatch, Resolver404
-from .resolvers import get_ns_resolver, get_resolver
+from .resolvers import (
+    TypedRegexURLPattern, TypedRegexURLResolver, get_ns_resolver, get_resolver,
+)
 from .utils import get_callable
 
 # SCRIPT_NAME prefixes for each thread are stored here. If there's no entry for
@@ -179,3 +183,51 @@ def translate_url(url, lang_code):
             else:
                 url = urlunsplit((parsed.scheme, parsed.netloc, url, parsed.query, parsed.fragment))
     return url
+
+
+_PATH_PARAMETER_COMPONENT_RE = re.compile(
+    '<(?:(?P<converter>[^:]+):)?(?P<parameter>[A-Za-z0-9_]+)>'
+)
+
+
+def _route_to_regex(route):
+    parts = ['^']
+    converters = {}
+    while True:
+        match = _PATH_PARAMETER_COMPONENT_RE.search(route)
+        if not match:
+            parts.append(re.escape(route))
+            break
+
+        parts.append(re.escape(route[:match.start()]))
+        route = route[match.end():]
+
+        parameter = match.group('parameter')
+        raw_converter = match.group('converter')
+        if raw_converter is None:
+            # If no converter is specified, the default is ``string``.
+            raw_converter = 'string'
+        converter = get_converter(raw_converter)
+        converters[parameter] = converter
+        parts.append('(?P<' + parameter + '>' + converter.regex + ')')
+    return ''.join(parts) + '$', converters
+
+
+def path(route, view, kwargs=None, name=None):
+    # TODO: Use `raw_converters` to see what to do.
+    regex, converters = _route_to_regex(route)
+    if isinstance(view, (list, tuple)):
+        # For include(...) processing.
+        urlconf_module, app_name, namespace = view
+        return TypedRegexURLResolver(
+            regex,
+            urlconf_module,
+            kwargs,
+            app_name=app_name,
+            namespace=namespace,
+            converters=converters
+        )
+    elif callable(view):
+        return TypedRegexURLPattern(regex, view, kwargs, name, converters=converters)
+    else:
+        raise TypeError('view must be a callable or a list/tuple in the case of include().')
