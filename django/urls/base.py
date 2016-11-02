@@ -214,7 +214,6 @@ def _route_to_regex(route):
 
 
 def path(route, view, kwargs=None, name=None):
-    # TODO: Use `raw_converters` to see what to do.
     regex, converters = _route_to_regex(route)
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
