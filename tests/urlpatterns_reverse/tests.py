@@ -1095,6 +1095,15 @@ class SimplifiedURLTests(SimpleTestCase):
         url = reverse('base64', kwargs={'value': 'hello'})
         self.assertEqual(url, '/base64/aGVsbG8=/')
 
+    def test_path_inclusion_is_matchable(self):
+        match = resolve('/included_urls/extra/something/')
+        self.assertEqual(match.url_name, 'inner-extra')
+        self.assertEqual(match.kwargs, {'extra': 'something'})
+
+    def test_path_inclusion_is_reversable(self):
+        url = reverse('inner-extra', kwargs={'extra': 'something'})
+        self.assertEqual(url, '/included_urls/extra/something/')
+
 
 class ViewLoadingTests(SimpleTestCase):
     def test_view_loading(self):

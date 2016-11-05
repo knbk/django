@@ -1,3 +1,4 @@
+from django.conf.urls import include
 from django.urls import path
 
 from . import views
@@ -12,4 +13,6 @@ urlpatterns = [
 
     path('users/', views.empty_view, name='users'),
     path('users/<id>/', views.empty_view, name='user-with-id'),
+
+    path('included_urls/', include('urlpatterns_reverse.included_urls'))
 ]

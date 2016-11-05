@@ -210,7 +210,7 @@ def _route_to_regex(route):
         converter = get_converter(raw_converter)
         converters[parameter] = converter
         parts.append('(?P<' + parameter + '>' + converter.regex + ')')
-    return ''.join(parts) + '$', converters
+    return ''.join(parts), converters
 
 
 def path(route, view, kwargs=None, name=None):
@@ -227,6 +227,6 @@ def path(route, view, kwargs=None, name=None):
             converters=converters
         )
     elif callable(view):
-        return RegexURLPattern(regex, view, kwargs, name, converters=converters)
+        return RegexURLPattern(regex + '$', view, kwargs, name, converters=converters)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
