@@ -12,11 +12,17 @@ class IntConverter(BaseConverter):
     def to_python(self, value):
         return int(value)
 
+    def to_url(self, value):
+        return str(value)
+
 
 class StringConverter(BaseConverter):
     regex = '[^/]+'
 
     def to_python(self, value):
+        return value
+
+    def to_url(self, value):
         return value
 
 DEFAULT_CONVERTERS = {
