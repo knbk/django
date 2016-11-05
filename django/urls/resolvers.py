@@ -388,7 +388,7 @@ class RegexURLResolver(LocaleRegexProvider):
                                 except KeyError:
                                     pass
                                 else:
-                                    kwargs[key] = converter.to_python(value)
+                                    sub_match_dict[key] = converter.to_python(value)
                         # Update the sub_match_dict with the kwargs from the sub_match.
                         sub_match_dict.update(sub_match.kwargs)
 
@@ -447,8 +447,6 @@ class RegexURLResolver(LocaleRegexProvider):
     def _reverse_with_prefix(self, lookup_view, _prefix, *args, **kwargs):
         if args and kwargs:
             raise ValueError("Don't mix *args and **kwargs in call to reverse()!")
-        text_args = [str(v) for v in args]
-        # text_kwargs = {k: str(v) for (k, v) in kwargs.items()}
 
         if not self._populated:
             self._populate()
@@ -460,7 +458,7 @@ class RegexURLResolver(LocaleRegexProvider):
                 if args:
                     if len(args) != len(params):
                         continue
-                    candidate_subs = dict(zip(params, text_args))
+                    candidate_subs = dict(zip(params, args))
                 else:
                     if (set(kwargs.keys()) | set(defaults.keys()) != set(params) |
                             set(defaults.keys())):
