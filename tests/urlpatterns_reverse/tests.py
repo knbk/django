@@ -1086,7 +1086,6 @@ class SimplifiedURLTests(SimpleTestCase):
         self.assertEqual(match.url_name, 'base64')
         self.assertEqual(match.kwargs, {'value': 'hello'})
 
-    @unittest.expectedFailure
     @override_settings(
         CUSTOM_URL_CONVERTERS={'base64': Base64Converter()},
         ROOT_URLCONF='urlpatterns_reverse.path_base64_urls',
