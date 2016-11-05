@@ -9,7 +9,7 @@ from django.utils.translation import override
 from .converters import get_converter
 from .exceptions import NoReverseMatch, Resolver404
 from .resolvers import (
-    TypedRegexURLPattern, TypedRegexURLResolver, get_ns_resolver, get_resolver,
+    RegexURLPattern, RegexURLResolver, get_ns_resolver, get_resolver,
 )
 from .utils import get_callable
 
@@ -218,7 +218,7 @@ def path(route, view, kwargs=None, name=None):
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
         urlconf_module, app_name, namespace = view
-        return TypedRegexURLResolver(
+        return RegexURLResolver(
             regex,
             urlconf_module,
             kwargs,
@@ -227,6 +227,6 @@ def path(route, view, kwargs=None, name=None):
             converters=converters
         )
     elif callable(view):
-        return TypedRegexURLPattern(regex, view, kwargs, name, converters=converters)
+        return RegexURLPattern(regex, view, kwargs, name, converters=converters)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')

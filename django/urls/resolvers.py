@@ -153,11 +153,12 @@ class LocaleRegexProvider:
 
 
 class RegexURLPattern(LocaleRegexProvider):
-    def __init__(self, regex, callback, default_args=None, name=None):
+    def __init__(self, regex, callback, default_args=None, name=None, converters=None):
         LocaleRegexProvider.__init__(self, regex)
         self.callback = callback  # the view
         self.default_args = default_args or {}
         self.name = name
+        self.converters = converters or {}
 
     def __repr__(self):
         return '<%s %s %s>' % (self.__class__.__name__, self.name, self.regex.pattern)
@@ -192,6 +193,17 @@ class RegexURLPattern(LocaleRegexProvider):
             args = () if kwargs else match.groups()
             # In both cases, pass any extra_kwargs as **kwargs.
             kwargs.update(self.default_args)
+
+            # Check if we need to convert any arguments to Python.
+            if self.converters:
+                for key, value in kwargs.items():
+                    try:
+                        converter = self.converters[key]
+                    except KeyError:
+                        pass
+                    else:
+                        kwargs[key] = converter.to_python(value)
+
             return ResolverMatch(self.callback, args, kwargs, self.name)
 
     @cached_property
@@ -211,7 +223,7 @@ class RegexURLPattern(LocaleRegexProvider):
 
 
 class RegexURLResolver(LocaleRegexProvider):
-    def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None):
+    def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
         LocaleRegexProvider.__init__(self, regex)
         # urlconf_name is the dotted Python path to the module defining
         # urlpatterns. It may also be an object with an urlpatterns attribute
@@ -221,6 +233,7 @@ class RegexURLResolver(LocaleRegexProvider):
         self.default_kwargs = default_kwargs or {}
         self.namespace = namespace
         self.app_name = app_name
+        self.converters = converters or {}
         self._reverse_dict = {}
         self._namespace_dict = {}
         self._app_dict = {}
@@ -364,6 +377,18 @@ class RegexURLResolver(LocaleRegexProvider):
                     if sub_match:
                         # Merge captured arguments in match with submatch
                         sub_match_dict = dict(match.groupdict(), **self.default_kwargs)
+                        # Check if we need to convert any arguments to Python.
+                        # At this point, sub_match_dict only contains items from this match, and not from any
+                        # sub-matches yet.
+                        if self.converters:
+                            for key, value in sub_match_dict.items():
+                                try:
+                                    converter = self.converters[key]
+                                except KeyError:
+                                    pass
+                                else:
+                                    kwargs[key] = converter.to_python(value)
+                        # Update the sub_match_dict with the kwargs from the sub_match.
                         sub_match_dict.update(sub_match.kwargs)
 
                         # If there are *any* named groups, ignore all non-named groups.
@@ -513,26 +538,3 @@ class LocaleRegexURLResolver(RegexURLResolver):
                 regex_string = '^%s/' % language_code
             self._regex_dict[language_code] = re.compile(regex_string)
         return self._regex_dict[language_code]
-
-
-class TypedURL(object):
-    def __init__(self, *args, **kwargs):
-        self.converters = kwargs.pop('converters', {})
-        super(TypedURL, self).__init__(*args, **kwargs)
-
-    def resolve(self, path):
-        match = super(TypedURL, self).resolve(path)
-        if match is not None:
-            kwargs = match.kwargs
-            for param, converter in self.converters.items():
-                if param in kwargs:
-                    kwargs[param] = converter.to_python(kwargs[param])
-        return match
-
-
-class TypedRegexURLPattern(TypedURL, RegexURLPattern):
-    pass
-
-
-class TypedRegexURLResolver(TypedURL, RegexURLResolver):
-    pass
