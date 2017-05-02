@@ -25,6 +25,7 @@ class StringConverter(BaseConverter):
     def to_url(self, value):
         return value
 
+
 DEFAULT_CONVERTERS = {
     'int': IntConverter(),
     'string': StringConverter(),
