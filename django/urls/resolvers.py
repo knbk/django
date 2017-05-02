@@ -487,9 +487,9 @@ class RegexURLResolver(LocaleRegexProvider):
                 # Then, if we have a match, redo the substitution with quoted
                 # arguments in order to return a properly encoded URL.
                 candidate_pat = _prefix.replace('%', '%%') + result
-                if re.search('^%s%s' % (re.escape(_prefix), pattern), candidate_pat % candidate_subs):
+                if re.search('^%s%s' % (re.escape(_prefix), pattern), candidate_pat % text_candidate_subs):
                     # safe characters from `pchar` definition of RFC 3986
-                    url = quote(candidate_pat % candidate_subs, safe=RFC3986_SUBDELIMS + '/~:@')
+                    url = quote(candidate_pat % text_candidate_subs, safe=RFC3986_SUBDELIMS + '/~:@')
                     # Don't allow construction of scheme relative urls.
                     if url.startswith('//'):
                         url = '/%%2F%s' % url[2:]
