@@ -1081,18 +1081,18 @@ class SimplifiedURLTests(SimpleTestCase):
         ROOT_URLCONF='urlpatterns_reverse.path_base64_urls',
     )
     def test_non_identical_converter_resolve(self):
-        # 'hello'.encode('base64') == 'aGVsbG8=\n'
+        # base64 of 'hello' is 'aGVsbG8=\n'
         match = resolve('/base64/aGVsbG8=/')
         self.assertEqual(match.url_name, 'base64')
-        self.assertEqual(match.kwargs, {'value': 'hello'})
+        self.assertEqual(match.kwargs, {'value': b'hello'})
 
     @override_settings(
         CUSTOM_URL_CONVERTERS={'base64': Base64Converter()},
         ROOT_URLCONF='urlpatterns_reverse.path_base64_urls',
     )
     def test_non_identical_converter_reverse(self):
-        # 'hello'.encode('base64') == 'aGVsbG8=\n'
-        url = reverse('base64', kwargs={'value': 'hello'})
+        # base64 of 'hello' is 'aGVsbG8=\n'
+        url = reverse('base64', kwargs={'value': b'hello'})
         self.assertEqual(url, '/base64/aGVsbG8=/')
 
     def test_path_inclusion_is_matchable(self):
