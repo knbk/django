@@ -32,14 +32,20 @@ DEFAULT_CONVERTERS = {
 }
 
 
+REGISTERED_CONVERTERS = {}
+
+
+def register_converter(converter, typename):
+    REGISTERED_CONVERTERS[typename] = converter()
+    get_converters.cache_clear()
+
+
 @lru_cache.lru_cache(maxsize=None)
 def get_converters():
-    converters = DEFAULT_CONVERTERS.copy()
-    try:
-        converters.update(settings.CUSTOM_URL_CONVERTERS)
-    except AttributeError:
-        # No custom converters configured. Not a problem.
-        pass
+    converters = {}
+    converters.update(DEFAULT_CONVERTERS)
+    converters.update(REGISTERED_CONVERTERS)
+
     return converters
 
 

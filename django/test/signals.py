@@ -151,13 +151,6 @@ def root_urlconf_changed(**kwargs):
 
 
 @receiver(setting_changed)
-def custom_url_converters_changed(**kwargs):
-    if kwargs['setting'] == 'CUSTOM_URL_CONVERTERS':
-        from django.urls.converters import get_converters
-        get_converters.cache_clear()
-
-
-@receiver(setting_changed)
 def static_storage_changed(**kwargs):
     if kwargs['setting'] in {
         'STATICFILES_STORAGE',
