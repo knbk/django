@@ -43,6 +43,5 @@ def get_converters():
     return converters
 
 
-@lru_cache.lru_cache(maxsize=None)
 def get_converter(raw_converter):
     return get_converters()[raw_converter]
