@@ -4,7 +4,7 @@ from unittest import mock
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase, override_settings
 from django.urls import LocaleRegexProvider
-from django.urls.resolvers import LocaleRegexDescriptor
+from django.urls.resolvers import LocaleCachedProperty
 from django.utils import translation
 
 here = os.path.dirname(os.path.abspath(__file__))
@@ -52,4 +52,4 @@ class LocaleRegexProviderTests(SimpleTestCase):
             provider.regex
 
     def test_access_locale_regex_descriptor(self):
-        self.assertIsInstance(LocaleRegexProvider.regex, LocaleRegexDescriptor)
+        self.assertIsInstance(LocaleRegexProvider.regex, LocaleCachedProperty)

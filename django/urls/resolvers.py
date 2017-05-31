@@ -76,34 +76,25 @@ def get_ns_resolver(ns_pattern, resolver):
     return RegexURLResolver(r'^/', [ns_resolver])
 
 
-class LocaleRegexDescriptor:
+class LocaleCachedProperty:
+    """Implementation of cached-property that is locale-aware."""
+    def __init__(self, func):
+        self._func = func
+        self._cache_name = '_{}_localecache'.format(func.__name__)
+
     def __get__(self, instance, cls=None):
-        """
-        Return a compiled regular expression based on the active language.
-        """
         if instance is None:
             return self
-        # As a performance optimization, if the given regex string is a regular
-        # string (not a lazily-translated string proxy), compile it once and
-        # avoid per-language compilation.
-        if isinstance(instance._regex, str):
-            instance.__dict__['regex'] = self._compile(instance._regex)
-            return instance.__dict__['regex']
-        language_code = get_language()
-        if language_code not in instance._regex_dict:
-            instance._regex_dict[language_code] = self._compile(str(instance._regex))
-        return instance._regex_dict[language_code]
 
-    def _compile(self, regex):
-        """
-        Compile and return the given regular expression.
-        """
+        language_code = get_language()
         try:
-            return re.compile(regex)
-        except re.error as e:
-            raise ImproperlyConfigured(
-                '"%s" is not a valid regular expression: %s' % (regex, e)
-            )
+            cache = getattr(instance, self._cache_name)
+        except AttributeError:
+            cache = {}
+            setattr(instance, self._cache_name, cache)
+        if language_code not in cache:
+            cache[language_code] = self._func(instance)
+        return cache[language_code]
 
 
 class LocaleRegexProvider:
@@ -116,9 +107,25 @@ class LocaleRegexProvider:
         # translatable string (using gettext_lazy) representing a regular
         # expression.
         self._regex = regex
-        self._regex_dict = {}
 
-    regex = LocaleRegexDescriptor()
+    @LocaleCachedProperty
+    def regex(self):
+        """
+        Compile and return the given regular expression.
+        """
+        try:
+            value = re.compile(str(self._regex))
+        except re.error as e:
+            raise ImproperlyConfigured(
+                '"%s" is not a valid regular expression: %s' % (self._regex, e)
+            )
+
+        # As a performance optimization, if the given regex string is a regular
+        # string (not a lazily-translated string proxy), compile it once and
+        # avoid per-language compilation.
+        if isinstance(self._regex, str):
+            self.regex = value
+        return value
 
     def describe(self):
         """
