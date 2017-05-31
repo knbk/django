@@ -1,9 +1,7 @@
 from importlib import import_module
 
 from django.core.exceptions import ImproperlyConfigured
-from django.urls import (
-    LocaleRegexURLResolver, RegexURLPattern, RegexURLResolver, re_path,
-)
+from django.urls import LocaleRegexURLResolver, re_path
 from django.views import defaults
 
 __all__ = ['handler400', 'handler403', 'handler404', 'handler500', 'include', 'url']
