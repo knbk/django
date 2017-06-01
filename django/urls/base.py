@@ -232,6 +232,8 @@ def re_path(regex, view, kwargs=None, name=None, converters=None):
 
 
 def path(route, view, kwargs=None, name=None):
+    if not isinstance(route, str):
+        raise NotImplementedError("Translateable routes are not yet supported.")
     regex, converters = _route_to_regex(route)
     if callable(view):
         regex += '$'
