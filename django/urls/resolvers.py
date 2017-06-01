@@ -543,6 +543,7 @@ class LocaleRegexURLResolver(RegexURLResolver):
     ):
         super().__init__(None, urlconf_name, default_kwargs, app_name, namespace)
         self.prefix_default_language = prefix_default_language
+        self._regex_dict = {}
 
     @property
     def regex(self):
