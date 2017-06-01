@@ -1,3 +1,5 @@
+import uuid
+
 from django.utils import lru_cache
 
 
@@ -25,9 +27,46 @@ class StringConverter(BaseConverter):
         return value
 
 
+class UUIDConverter(BaseConverter):
+    regex = '[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}'
+
+    def to_python(self, value):
+        return uuid.UUID(value)
+
+    def to_url(self, value):
+        return str(value)
+
+
+class SlugConverter(BaseConverter):
+
+    # Django has both `slug_re` and `slug_unicode_re`. In the case of URLs, the
+    # non-unicode variant seems to make more sense.
+    regex = '[-a-zA-Z0-9_]+'
+
+    def to_python(self, value):
+        return value
+
+    def to_url(self, value):
+        return value
+
+
+class PathConverter(BaseConverter):
+
+    regex = '.+'
+
+    def to_python(self, value):
+        return value
+
+    def to_url(self, value):
+        return value
+
+
 DEFAULT_CONVERTERS = {
     'int': IntConverter(),
+    'path': PathConverter(),
+    'slug': SlugConverter(),
     'string': StringConverter(),
+    'uuid': UUIDConverter(),
 }
 
 
