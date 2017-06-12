@@ -3,6 +3,7 @@ import os
 
 from django.conf.urls import include, url
 from django.conf.urls.i18n import i18n_patterns
+from django.urls import path
 from django.utils.translation import gettext_lazy as _
 from django.views import defaults, i18n, static
 
@@ -73,9 +74,6 @@ def bogus_view(request):
 
 # Views to better test the technical 404.
 urlpatterns += [
-    url(
-        r'^regex-post/(?P<pk>[0-9]+)/$',
-        bogus_view,
-        name='regex-post',
-    ),
+    url(r'^regex-post/(?P<pk>[0-9]+)/$', bogus_view, name='regex-post'),
+    path(r'path-post/<int:pk>/', bogus_view, name='path-post'),
 ]

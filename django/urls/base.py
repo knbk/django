@@ -1,4 +1,3 @@
-import re
 from threading import local
 from urllib.parse import urlsplit, urlunsplit
 
@@ -6,10 +5,10 @@ from django.utils.encoding import iri_to_uri
 from django.utils.functional import lazy
 from django.utils.translation import override
 
-from .converters import get_converter
 from .exceptions import NoReverseMatch, Resolver404
 from .resolvers import (
-    RegexURLPattern, RegexURLResolver, get_ns_resolver, get_resolver,
+    PathURLPattern, PathURLResolver, RegexURLPattern, RegexURLResolver,
+    get_ns_resolver, get_resolver,
 )
 from .utils import get_callable
 
@@ -185,34 +184,6 @@ def translate_url(url, lang_code):
     return url
 
 
-_PATH_PARAMETER_COMPONENT_RE = re.compile(
-    '<(?:(?P<converter>[^:]+):)?(?P<parameter>[A-Za-z0-9_]+)>'
-)
-
-
-def _route_to_regex(route):
-    parts = ['^']
-    converters = {}
-    while True:
-        match = _PATH_PARAMETER_COMPONENT_RE.search(route)
-        if not match:
-            parts.append(re.escape(route))
-            break
-
-        parts.append(re.escape(route[:match.start()]))
-        route = route[match.end():]
-
-        parameter = match.group('parameter')
-        raw_converter = match.group('converter')
-        if raw_converter is None:
-            # If no converter is specified, the default is ``string``.
-            raw_converter = 'string'
-        converter = get_converter(raw_converter)
-        converters[parameter] = converter
-        parts.append('(?P<' + parameter + '>' + converter.regex + ')')
-    return ''.join(parts), converters
-
-
 def re_path(regex, view, kwargs=None, name=None, converters=None):
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
@@ -231,10 +202,19 @@ def re_path(regex, view, kwargs=None, name=None, converters=None):
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
 
 
-def path(route, view, kwargs=None, name=None):
-    if not isinstance(route, str):
-        raise NotImplementedError("Translateable routes are not yet supported.")
-    regex, converters = _route_to_regex(route)
-    if callable(view):
-        regex += '$'
-    return re_path(regex, view, kwargs, name, converters)
+def path(regex, view, kwargs=None, name=None, converters=None):
+    if isinstance(view, (list, tuple)):
+        # For include(...) processing.
+        urlconf_module, app_name, namespace = view
+        return PathURLResolver(
+            regex,
+            urlconf_module,
+            kwargs,
+            app_name=app_name,
+            namespace=namespace,
+            converters=converters
+        )
+    elif callable(view):
+        return PathURLPattern(regex, view, kwargs, name, converters=converters)
+    else:
+        raise TypeError('view must be a callable or a list/tuple in the case of include().')

@@ -21,6 +21,7 @@ from django.utils.http import RFC3986_SUBDELIMS
 from django.utils.regex_helper import normalize
 from django.utils.translation import get_language
 
+from .converters import get_converter
 from .exceptions import NoReverseMatch, Resolver404
 from .utils import get_callable
 
@@ -119,7 +120,44 @@ class RegexURLMixin:
             )
 
 
-class RegexURLPattern(RegexURLMixin):
+_PATH_PARAMETER_COMPONENT_RE = re.compile(
+    '<(?:(?P<converter>[^:]+):)?(?P<parameter>[A-Za-z0-9_]+)>'
+)
+
+
+def _route_to_regex(route):
+    parts = ['^']
+    converters = {}
+    while True:
+        match = _PATH_PARAMETER_COMPONENT_RE.search(route)
+        if not match:
+            parts.append(re.escape(route))
+            break
+
+        parts.append(re.escape(route[:match.start()]))
+        route = route[match.end():]
+
+        parameter = match.group('parameter')
+        raw_converter = match.group('converter')
+        if raw_converter is None:
+            # If no converter is specified, the default is ``string``.
+            raw_converter = 'string'
+        converter = get_converter(raw_converter)
+        converters[parameter] = converter
+        parts.append('(?P<' + parameter + '>' + converter.regex + ')')
+    return ''.join(parts), converters
+
+
+class PathURLMixin:
+    def compile(self):
+        # TODO: Wrap in `try/except:raise ImproperlyConfigured`
+        regex, converters = _route_to_regex(str(self.pattern))
+        if isinstance(self, URLPattern):
+            regex += '$'
+        return re.compile(regex), converters
+
+
+class URLPattern:
     def __init__(self, regex, callback, default_args=None, name=None, converters=None):
         self.pattern = regex
         self.callback = callback  # the view
@@ -198,7 +236,7 @@ class RegexURLPattern(RegexURLMixin):
             if self.converters:
                 for key, value in kwargs.items():
                     try:
-                        converter = self._converters[key]
+                        converter = self.converters[key]
                     except KeyError:
                         pass
                     else:
@@ -222,7 +260,7 @@ class RegexURLPattern(RegexURLMixin):
         return callback.__module__ + "." + callback.__qualname__
 
 
-class RegexURLResolver(RegexURLMixin, CheckURLMixin):
+class URLResolver(CheckURLMixin):
     def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
         self.pattern = regex
         # urlconf_name is the dotted Python path to the module defining
@@ -298,12 +336,12 @@ class RegexURLResolver(RegexURLMixin, CheckURLMixin):
         self._regex_dict[language_code] = regex
         self._converters_dict[language_code] = converters
         for pattern in reversed(self.url_patterns):
-            if isinstance(pattern, RegexURLPattern):
+            if isinstance(pattern, URLPattern):
                 self._callback_strs.add(pattern.lookup_str)
             p_pattern = pattern.regex.pattern
             if p_pattern.startswith('^'):
                 p_pattern = p_pattern[1:]
-            if isinstance(pattern, RegexURLResolver):
+            if isinstance(pattern, URLResolver):
                 if pattern.namespace:
                     namespaces[pattern.namespace] = (p_pattern, pattern)
                     if pattern.app_name:
@@ -319,7 +357,7 @@ class RegexURLResolver(RegexURLMixin, CheckURLMixin):
                                     new_matches,
                                     p_pattern + pat,
                                     dict(defaults, **pattern.default_kwargs),
-                                    dict(self.converters, **pattern.converters),
+                                    dict(self.converters, **pat_converters),
                                 )
                             )
                     for namespace, (prefix, sub_pattern) in pattern.namespace_dict.items():
@@ -542,6 +580,22 @@ class RegexURLResolver(RegexURLMixin, CheckURLMixin):
                 "a valid view function or pattern name." % {'view': lookup_view_s}
             )
         raise NoReverseMatch(msg)
+
+
+class PathURLPattern(PathURLMixin, URLPattern):
+    pass
+
+
+class PathURLResolver(PathURLMixin, URLResolver):
+    pass
+
+
+class RegexURLPattern(RegexURLMixin, URLPattern):
+    pass
+
+
+class RegexURLResolver(RegexURLMixin, URLResolver):
+    pass
 
 
 class LocaleRegexURLResolver(RegexURLResolver):
