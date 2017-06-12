@@ -116,8 +116,8 @@ class DebugViewTests(LoggingCaptureMixin, SimpleTestCase):
 
         # Assert the presence of both a pattern + view-name of a random
         # RegexURLPattern.
-        self.assertContains(response, "technical404/$", status_code=404)
-        self.assertContains(response, "[name='my404']", status_code=404)
+        self.assertContains(response, r"^regex-post/(?P&lt;pk&gt;[0-9]+)/$", status_code=404)
+        self.assertContains(response, "[name='regex-post']", status_code=404)
 
     @override_settings(ROOT_URLCONF=WithoutEmptyPathUrls)
     def test_404_empty_path_not_in_urls(self):

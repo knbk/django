@@ -1,5 +1,5 @@
 from functools import partial
-from os import path
+import os
 
 from django.conf.urls import include, url
 from django.conf.urls.i18n import i18n_patterns
@@ -8,9 +8,9 @@ from django.views import defaults, i18n, static
 
 from . import views
 
-base_dir = path.dirname(path.abspath(__file__))
-media_dir = path.join(base_dir, 'media')
-locale_dir = path.join(base_dir, 'locale')
+base_dir = os.path.dirname(os.path.abspath(__file__))
+media_dir = os.path.join(base_dir, 'media')
+locale_dir = os.path.join(base_dir, 'locale')
 
 urlpatterns = [
     url(r'^$', views.index_page),
@@ -64,4 +64,18 @@ urlpatterns += [
     ),
     url(r'^render_no_template/$', views.render_no_template, name='render_no_template'),
     url(r'^test-setlang/(?P<parameter>[^/]+)/$', views.with_parameter, name='with_parameter'),
+]
+
+
+def bogus_view(request):
+    return None
+
+
+# Views to better test the technical 404.
+urlpatterns += [
+    url(
+        r'^regex-post/(?P<pk>[0-9]+)/$',
+        bogus_view,
+        name='regex-post',
+    ),
 ]
