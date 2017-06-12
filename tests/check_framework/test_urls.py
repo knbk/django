@@ -31,16 +31,6 @@ class CheckUrlConfigTests(SimpleTestCase):
         expected_msg = "Your URL pattern '^include-with-dollar$' uses include with a regex ending with a '$'."
         self.assertIn(expected_msg, warning.msg)
 
-    @override_settings(ROOT_URLCONF='check_framework.urls.contains_tuple')
-    def test_contains_tuple_not_url_instance(self):
-        result = check_url_config(None)
-        warning = result[0]
-        self.assertEqual(warning.id, 'urls.E004')
-        self.assertRegex(warning.msg, (
-            r"^Your URL pattern \('\^tuple/\$', <function <lambda> at 0x(\w+)>\) is "
-            r"invalid. Ensure that urlpatterns is a list of url\(\) instances.$"
-        ))
-
     @override_settings(ROOT_URLCONF='check_framework.urls.beginning_with_slash')
     def test_beginning_with_slash(self):
         result = check_url_config(None)

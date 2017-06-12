@@ -77,6 +77,13 @@ def get_ns_resolver(ns_pattern, resolver):
     return RegexURLResolver(r'^/', [ns_resolver])
 
 
+class BaseURL:
+    """
+    Base class for URL instances.
+    """
+    pass
+
+
 class CheckURLMixin:
     def describe(self):
         """
@@ -157,7 +164,7 @@ class PathURLMixin:
         return re.compile(regex), converters
 
 
-class URLPattern:
+class URLPattern(CheckURLMixin, BaseURL):
     def __init__(self, regex, callback, default_args=None, name=None, converters=None):
         self.pattern = regex
         self.callback = callback  # the view
@@ -260,7 +267,7 @@ class URLPattern:
         return callback.__module__ + "." + callback.__qualname__
 
 
-class URLResolver(CheckURLMixin):
+class URLResolver(CheckURLMixin, BaseURL):
     def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
         self.pattern = regex
         # urlconf_name is the dotted Python path to the module defining
@@ -336,6 +343,12 @@ class URLResolver(CheckURLMixin):
         self._regex_dict[language_code] = regex
         self._converters_dict[language_code] = converters
         for pattern in reversed(self.url_patterns):
+            if not isinstance(pattern, BaseURL):
+                msg = (
+                    "Your URL pattern {!r} is invalid. Ensure that urlpatterns "
+                    "is a list of url() instances."
+                ).format(pattern)
+                raise ImproperlyConfigured(msg)
             if isinstance(pattern, URLPattern):
                 self._callback_strs.add(pattern.lookup_str)
             p_pattern = pattern.regex.pattern
