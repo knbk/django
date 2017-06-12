@@ -6,7 +6,7 @@ from .base import (
 from .converters import register_converter
 from .exceptions import NoReverseMatch, Resolver404
 from .resolvers import (
-    LocaleRegexProvider, LocaleRegexURLResolver, RegexURLPattern,
+    LocaleRegexURLResolver, RegexURLPattern,
     RegexURLResolver, ResolverMatch, get_ns_resolver, get_resolver,
 )
 from .utils import get_callable, get_mod_func

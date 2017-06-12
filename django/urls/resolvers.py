@@ -76,57 +76,7 @@ def get_ns_resolver(ns_pattern, resolver):
     return RegexURLResolver(r'^/', [ns_resolver])
 
 
-class LocaleCachedProperty:
-    """Implementation of cached-property that is locale-aware."""
-    def __init__(self, func):
-        self._func = func
-        self._cache_name = '_{}_localecache'.format(func.__name__)
-
-    def __get__(self, instance, cls=None):
-        if instance is None:
-            return self
-
-        language_code = get_language()
-        try:
-            cache = getattr(instance, self._cache_name)
-        except AttributeError:
-            cache = {}
-            setattr(instance, self._cache_name, cache)
-        if language_code not in cache:
-            cache[language_code] = self._func(instance)
-        return cache[language_code]
-
-
-class LocaleRegexProvider:
-    """
-    A mixin to provide a default regex property which can vary by active
-    language.
-    """
-    def __init__(self, regex):
-        # regex is either a string representing a regular expression, or a
-        # translatable string (using gettext_lazy) representing a regular
-        # expression.
-        self.pattern = regex
-
-    @LocaleCachedProperty
-    def regex(self):
-        """
-        Compile and return the given regular expression.
-        """
-        try:
-            value = re.compile(str(self.pattern))
-        except re.error as e:
-            raise ImproperlyConfigured(
-                '"%s" is not a valid regular expression: %s' % (self.pattern, e)
-            )
-
-        # As a performance optimization, if the given regex string is a regular
-        # string (not a lazily-translated string proxy), compile it once and
-        # avoid per-language compilation.
-        if isinstance(self.pattern, str):
-            self.regex = value
-        return value
-
+class CheckURLMixin:
     def describe(self):
         """
         Format the URL pattern for display in warning messages.
@@ -159,13 +109,56 @@ class LocaleRegexProvider:
             return []
 
 
-class RegexURLPattern(LocaleRegexProvider):
+class RegexURLMixin:
+    def compile(self):
+        try:
+            return re.compile(str(self.pattern)), {}
+        except re.error as e:
+            raise ImproperlyConfigured(
+                '"%s" is not a valid regular expression: %s' % (self.pattern, e)
+            )
+
+
+class RegexURLPattern(RegexURLMixin):
     def __init__(self, regex, callback, default_args=None, name=None, converters=None):
-        LocaleRegexProvider.__init__(self, regex)
+        self.pattern = regex
         self.callback = callback  # the view
         self.default_args = default_args or {}
         self.name = name
-        self.converters = converters or {}
+        self._converters = converters or {}
+        self._regex_dict = {}
+        self._converters_dict = {}
+        self._local = threading.local()
+
+    def _populate(self):
+        # Short-circuit if called recursively in this thread to prevent
+        # infinite recursion. Concurrent threads may call this at the same
+        # time and will need to continue, so set 'populating' on a
+        # thread-local variable.
+        if getattr(self._local, 'populating', False):
+            return
+        self._local.populating = True
+        language_code = get_language()
+        regex, converters = self.compile()
+        converters = dict(converters, **self._converters)
+        self._regex_dict[language_code] = regex
+        self._converters_dict[language_code] = converters
+        self._populated = True
+        self._local.populating = False
+
+    @property
+    def regex(self):
+        language_code = get_language()
+        if language_code not in self._regex_dict:
+            self._populate()
+        return self._regex_dict[language_code]
+
+    @property
+    def converters(self):
+        language_code = get_language()
+        if language_code not in self._converters_dict:
+            self._populate()
+        return self._converters_dict[language_code]
 
     def __repr__(self):
         return '<%s %s %s>' % (self.__class__.__name__, self.name, self.regex.pattern)
@@ -205,7 +198,7 @@ class RegexURLPattern(LocaleRegexProvider):
             if self.converters:
                 for key, value in kwargs.items():
                     try:
-                        converter = self.converters[key]
+                        converter = self._converters[key]
                     except KeyError:
                         pass
                     else:
@@ -229,9 +222,9 @@ class RegexURLPattern(LocaleRegexProvider):
         return callback.__module__ + "." + callback.__qualname__
 
 
-class RegexURLResolver(LocaleRegexProvider):
+class RegexURLResolver(RegexURLMixin, CheckURLMixin):
     def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
-        LocaleRegexProvider.__init__(self, regex)
+        self.pattern = regex
         # urlconf_name is the dotted Python path to the module defining
         # urlpatterns. It may also be an object with an urlpatterns attribute
         # or urlpatterns itself.
@@ -240,7 +233,9 @@ class RegexURLResolver(LocaleRegexProvider):
         self.default_kwargs = default_kwargs or {}
         self.namespace = namespace
         self.app_name = app_name
-        self.converters = converters or {}
+        self._converters = converters or {}
+        self._regex_dict = {}
+        self._converters_dict = {}
         self._reverse_dict = {}
         self._namespace_dict = {}
         self._app_dict = {}
@@ -297,6 +292,11 @@ class RegexURLResolver(LocaleRegexProvider):
         namespaces = {}
         apps = {}
         language_code = get_language()
+        regex, converters = self.compile()
+        # We need to store these two values *before* inspecting url_patterns,
+        # because there might be cyclic dependencies.
+        self._regex_dict[language_code] = regex
+        self._converters_dict[language_code] = converters
         for pattern in reversed(self.url_patterns):
             if isinstance(pattern, RegexURLPattern):
                 self._callback_strs.add(pattern.lookup_str)
@@ -311,7 +311,7 @@ class RegexURLResolver(LocaleRegexProvider):
                 else:
                     parent_pat = pattern.regex.pattern
                     for name in pattern.reverse_dict:
-                        for matches, pat, defaults, converters in pattern.reverse_dict.getlist(name):
+                        for matches, pat, defaults, pat_converters in pattern.reverse_dict.getlist(name):
                             new_matches = normalize(parent_pat + pat)
                             lookups.appendlist(
                                 name,
@@ -339,6 +339,20 @@ class RegexURLResolver(LocaleRegexProvider):
         self._app_dict[language_code] = apps
         self._populated = True
         self._local.populating = False
+
+    @property
+    def regex(self):
+        language_code = get_language()
+        if language_code not in self._regex_dict:
+            self._populate()
+        return self._regex_dict[language_code]
+
+    @property
+    def converters(self):
+        language_code = get_language()
+        if language_code not in self._converters_dict:
+            self._populate()
+        return self._converters_dict[language_code]
 
     @property
     def reverse_dict(self):
@@ -546,12 +560,17 @@ class LocaleRegexURLResolver(RegexURLResolver):
         self._regex_dict = {}
 
     @property
-    def regex(self):
+    def pattern(self):
         language_code = get_language() or settings.LANGUAGE_CODE
-        if language_code not in self._regex_dict:
-            if language_code == settings.LANGUAGE_CODE and not self.prefix_default_language:
-                regex_string = ''
-            else:
-                regex_string = '^%s/' % language_code
-            self._regex_dict[language_code] = re.compile(regex_string)
-        return self._regex_dict[language_code]
+        if language_code == settings.LANGUAGE_CODE and not self.prefix_default_language:
+            regex_string = ''
+        else:
+            regex_string = '^%s/' % language_code
+        return regex_string
+
+    @pattern.setter
+    def pattern(self, value):
+        # For the `LocaleRegexURLResolver`, we don't want to get passed a
+        # pattern, however `super()` *does* set `pattern`. In `__init__`, we
+        # pass in `None`, so let's just verify that that is actually the case.
+        assert value is None
