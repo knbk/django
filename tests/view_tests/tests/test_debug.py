@@ -111,7 +111,13 @@ class DebugViewTests(LoggingCaptureMixin, SimpleTestCase):
     def test_404_not_in_urls(self):
         response = self.client.get('/not-in-urls')
         self.assertNotContains(response, "Raised by:", status_code=404)
+        self.assertContains(response, "Django tried these URL patterns", status_code=404)
         self.assertContains(response, "<code>not-in-urls</code>, didn't match", status_code=404)
+
+        # Assert the presence of both a pattern + view-name of a random
+        # RegexURLPattern.
+        self.assertContains(response, "technical404/$", status_code=404)
+        self.assertContains(response, "[name='my404']", status_code=404)
 
     @override_settings(ROOT_URLCONF=WithoutEmptyPathUrls)
     def test_404_empty_path_not_in_urls(self):
