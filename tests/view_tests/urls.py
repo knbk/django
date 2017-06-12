@@ -1,5 +1,5 @@
-from functools import partial
 import os
+from functools import partial
 
 from django.conf.urls import include, url
 from django.conf.urls.i18n import i18n_patterns
