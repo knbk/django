@@ -106,7 +106,7 @@ class LocaleRegexProvider:
         # regex is either a string representing a regular expression, or a
         # translatable string (using gettext_lazy) representing a regular
         # expression.
-        self._regex = regex
+        self.pattern = regex
 
     @LocaleCachedProperty
     def regex(self):
@@ -114,16 +114,16 @@ class LocaleRegexProvider:
         Compile and return the given regular expression.
         """
         try:
-            value = re.compile(str(self._regex))
+            value = re.compile(str(self.pattern))
         except re.error as e:
             raise ImproperlyConfigured(
-                '"%s" is not a valid regular expression: %s' % (self._regex, e)
+                '"%s" is not a valid regular expression: %s' % (self.pattern, e)
             )
 
         # As a performance optimization, if the given regex string is a regular
         # string (not a lazily-translated string proxy), compile it once and
         # avoid per-language compilation.
-        if isinstance(self._regex, str):
+        if isinstance(self.pattern, str):
             self.regex = value
         return value
 
