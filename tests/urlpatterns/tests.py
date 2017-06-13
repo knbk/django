@@ -1,9 +1,10 @@
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 from django.test.utils import override_settings
-from django.urls import resolve, reverse
+from django.urls import resolve, reverse, register_converter, Resolver404
+from django.urls.converters import BaseConverter
 
-from .converters import Base64Converter
+from .converters import Base64Converter, DynamicConverter
 
 
 @override_settings(ROOT_URLCONF='urlpatterns.path_urls')
@@ -75,3 +76,33 @@ class InvalidURLsTests(SimpleTestCase):
         with self.assertRaises(ImproperlyConfigured):
             with override_settings(ROOT_URLCONF='urlpatterns.urls.contains_tuple'):
                 resolve('/')
+
+
+@override_settings(
+    ROOT_URLCONF='urlpatterns.path_dynamic_urls',
+)
+class ConversionExceptionTests(SimpleTestCase):
+    """
+    How are conversion-errors dealt with?
+    """
+
+    def test_resolve_value_error_means_no_match(self):
+        @DynamicConverter.register_to_python
+        def raises_value_error(value):
+            raise ValueError()
+        with self.assertRaises(Resolver404):
+            resolve('/dynamic/abc/')
+
+    def test_resolve_type_error_propogates(self):
+        @DynamicConverter.register_to_python
+        def raises_type_error(value):
+            raise TypeError("This type error propagates.")
+        with self.assertRaisesMessage(TypeError, "This type error propagates."):
+            resolve('/dynamic/abc/')
+
+    def test_reverse_value_error_propagates(self):
+        @DynamicConverter.register_to_url
+        def raises_value_error(value):
+            raise ValueError("This value error propagates.")
+        with self.assertRaisesMessage(ValueError, "This value error propagates."):
+            reverse('dynamic', kwargs={'value': object()})

@@ -12,3 +12,31 @@ class Base64Converter(BaseConverter):
     def to_url(self, value):
         # b64encode returns bytes, but we need to return a string.
         return base64.b64encode(value).decode('ascii')
+
+
+class DynamicConverter(BaseConverter):
+    _dynamic_to_python = None
+    _dynamic_to_url = None
+
+    @property
+    def regex(self):
+        # A reasonably broad regex.
+        return r'[0-9a-zA-Z]+'
+
+    @regex.setter
+    def regex(self):
+        raise Exception("You can't modify the regular expression used. Sorry.")
+
+    def to_python(self, value):
+        return type(self)._dynamic_to_python(value)
+
+    def to_url(self, value):
+        return type(self)._dynamic_to_url(value)
+
+    @classmethod
+    def register_to_python(cls, value):
+        cls._dynamic_to_python = value
+
+    @classmethod
+    def register_to_url(cls, value):
+        cls._dynamic_to_url = value

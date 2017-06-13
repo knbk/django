@@ -247,7 +247,10 @@ class URLPattern(CheckURLMixin, BaseURL):
                     except KeyError:
                         pass
                     else:
-                        kwargs[key] = converter.to_python(value)
+                        try:
+                            kwargs[key] = converter.to_python(value)
+                        except ValueError:
+                            return None
 
             return ResolverMatch(self.callback, args, kwargs, self.name)
 
