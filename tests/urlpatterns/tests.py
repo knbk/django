@@ -1,7 +1,7 @@
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 from django.test.utils import override_settings
-from django.urls import resolve, reverse, register_converter, Resolver404
+from django.urls import path, resolve, reverse, register_converter, Resolver404
 from django.urls.converters import BaseConverter
 
 from .converters import Base64Converter, DynamicConverter
@@ -76,6 +76,19 @@ class InvalidURLsTests(SimpleTestCase):
         with self.assertRaises(ImproperlyConfigured):
             with override_settings(ROOT_URLCONF='urlpatterns.urls.contains_tuple'):
                 resolve('/')
+
+
+class ParameterRestrictionTests(SimpleTestCase):
+    def test_non_identifier_parameter_name_causes_exception(self):
+        with self.assertRaises(ImproperlyConfigured):
+            p = path(r'hello/<str:1>/', lambda r: None)
+            p.resolve('hello/1/')
+
+    def test_allows_non_ascii_but_valid_identifiers(self):
+        # \u0394 is "GREEK CAPITAL LETTER DELTA", a valid identifier.
+        p = path('hello/<string:\u0394>/', lambda r: None)
+        match = p.resolve('hello/1/')
+        self.assertEqual(match.kwargs, {'\u0394': '1'})
 
 
 @override_settings(

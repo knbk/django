@@ -128,7 +128,7 @@ class RegexURLMixin:
 
 
 _PATH_PARAMETER_COMPONENT_RE = re.compile(
-    '<(?:(?P<converter>[^:]+):)?(?P<parameter>[A-Za-z0-9_]+)>'
+    '<(?:(?P<converter>[^:]+):)?(?P<parameter>\w+)>'
 )
 
 
@@ -145,6 +145,11 @@ def _route_to_regex(route):
         route = route[match.end():]
 
         parameter = match.group('parameter')
+        if not parameter.isidentifier():
+            msg = "Parameter name {!r} is not a valid identifier.".format(
+                parameter
+            )
+            raise ImproperlyConfigured(msg)
         raw_converter = match.group('converter')
         if raw_converter is None:
             # If no converter is specified, the default is ``string``.
