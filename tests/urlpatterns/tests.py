@@ -44,7 +44,6 @@ class SimplifiedURLTests(SimpleTestCase):
         self.assertEqual(url, '/articles/2015/4/12/')
 
     @override_settings(
-        CUSTOM_URL_CONVERTERS={'base64': Base64Converter()},
         ROOT_URLCONF='urlpatterns.path_base64_urls',
     )
     def test_non_identical_converter_resolve(self):
@@ -54,7 +53,6 @@ class SimplifiedURLTests(SimpleTestCase):
         self.assertEqual(match.kwargs, {'value': b'hello'})
 
     @override_settings(
-        CUSTOM_URL_CONVERTERS={'base64': Base64Converter()},
         ROOT_URLCONF='urlpatterns.path_base64_urls',
     )
     def test_non_identical_converter_reverse(self):
