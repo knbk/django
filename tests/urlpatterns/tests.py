@@ -1,10 +1,9 @@
 from django.core.exceptions import ImproperlyConfigured
 from django.test import SimpleTestCase
 from django.test.utils import override_settings
-from django.urls import path, resolve, reverse, register_converter, Resolver404
-from django.urls.converters import BaseConverter
+from django.urls import Resolver404, path, resolve, reverse
 
-from .converters import Base64Converter, DynamicConverter
+from .converters import DynamicConverter
 
 
 @override_settings(ROOT_URLCONF='urlpatterns.path_urls')
