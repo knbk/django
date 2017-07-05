@@ -60,3 +60,16 @@ def get_mod_func(callback):
     except ValueError:
         return callback, ''
     return callback[:dot], callback[dot + 1:]
+
+
+def get_lookup_string(view):
+    """
+    A string that identifies the view (e.g. 'path.to.view_function' or
+    'path.to.ClassBasedView').
+    """
+    if isinstance(view, functools.partial):
+        view = view.func
+    if not hasattr(view, '__name__'):
+        return view.__module__ + "." + view.__class__.__name__
+    else:
+        return view.__module__ + "." + view.__name__

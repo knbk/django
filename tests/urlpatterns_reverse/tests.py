@@ -17,7 +17,7 @@ from django.shortcuts import redirect
 from django.test import SimpleTestCase, TestCase, override_settings
 from django.test.utils import override_script_prefix
 from django.urls import (
-    NoReverseMatch, RegexURLPattern, RegexURLResolver, Resolver404,
+    NoReverseMatch, Resolver404,
     ResolverMatch, get_callable, get_resolver, resolve, reverse, reverse_lazy,
 )
 
