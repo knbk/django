@@ -308,6 +308,16 @@ class HttpRequest:
             for f in chain.from_iterable(l[1] for l in self._files.lists()):
                 f.close()
 
+    @property
+    def urlconf(self):
+        from django.urls import get_urlconf
+        return get_urlconf()
+
+    @urlconf.setter
+    def urlconf(self, urlconf):
+        from django.urls import set_urlconf
+        set_urlconf(urlconf)
+
     # File-like and iterator interface.
     #
     # Expects self._stream to be set to an appropriate source of bytes by

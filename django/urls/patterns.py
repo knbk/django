@@ -16,12 +16,20 @@ class RegexPattern:
         args = p.groupindex.keys()
         return dict((arg, 'string') for arg in args)
 
-    def convert(self, kwargs):
+    def to_python(self, kwargs):
         converters = self.get_converters()
         for key in kwargs:
             if key in converters:
                 converter = get_converter(converters[key])
                 kwargs[key] = converter.to_python(kwargs[key])
+        return kwargs
+
+    def to_url(self, kwargs):
+        converters = self.get_converters()
+        for key in kwargs:
+            if key in converters:
+                converter = get_converter(converters[key])
+                kwargs[key] = converter.to_url(kwargs[key])
         return kwargs
 
 
@@ -68,12 +76,20 @@ class RoutePattern:
     def get_converters(self):
         return _route_to_regex(self._route)[1]
 
-    def convert(self, kwargs):
+    def to_python(self, kwargs):
         converters = self.get_converters()
         for key in kwargs:
             if key in converters:
                 converter = get_converter(converters[key])
                 kwargs[key] = converter.to_python(kwargs[key])
+        return kwargs
+
+    def to_url(self, kwargs):
+        converters = self.get_converters()
+        for key in kwargs:
+            if key in converters:
+                converter = get_converter(converters[key])
+                kwargs[key] = converter.to_url(kwargs[key])
         return kwargs
 
 
@@ -111,10 +127,18 @@ class CombinedPattern:
             converters.update(pattern.get_converters())
         return converters
 
-    def convert(self, kwargs):
+    def to_python(self, kwargs):
         converters = self.get_converters()
         for key in kwargs:
             if key in converters:
                 converter = get_converter(converters[key])
                 kwargs[key] = converter.to_python(kwargs[key])
+        return kwargs
+
+    def to_url(self, kwargs):
+        converters = self.get_converters()
+        for key in kwargs:
+            if key in converters:
+                converter = get_converter(converters[key])
+                kwargs[key] = converter.to_url(kwargs[key])
         return kwargs

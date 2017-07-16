@@ -24,7 +24,7 @@ class StringConverter(BaseConverter):
         return value
 
     def to_url(self, value):
-        return value
+        return str(value)
 
 
 class UUIDConverter(BaseConverter):
@@ -47,7 +47,7 @@ class SlugConverter(BaseConverter):
         return value
 
     def to_url(self, value):
-        return value
+        return str(value)
 
 
 class PathConverter(BaseConverter):
@@ -58,7 +58,7 @@ class PathConverter(BaseConverter):
         return value
 
     def to_url(self, value):
-        return value
+        return str(value)
 
 
 DEFAULT_CONVERTERS = {

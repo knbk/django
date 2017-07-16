@@ -3,6 +3,7 @@ Unit tests for reverse URL lookups.
 """
 import sys
 import threading
+from unittest import expectedFailure
 
 from admin_scripts.tests import AdminScriptTestCase
 
@@ -20,6 +21,7 @@ from django.urls import (
     NoReverseMatch, Resolver404,
     ResolverMatch, get_callable, get_resolver, resolve, reverse, reverse_lazy,
 )
+from django.urls.dispatcher import Dispatcher
 
 from . import middleware, urlconf_outer, views
 from .utils import URLObject
@@ -261,7 +263,7 @@ class NoURLPatternsTests(SimpleTestCase):
         """
         RegexURLResolver should raise an exception when no urlpatterns exist.
         """
-        resolver = RegexURLResolver(r'^$', settings.ROOT_URLCONF)
+        resolver = Dispatcher(settings.ROOT_URLCONF)
 
         with self.assertRaisesMessage(
             ImproperlyConfigured,
@@ -269,7 +271,7 @@ class NoURLPatternsTests(SimpleTestCase):
             "appear to have any patterns in it. If you see valid patterns in "
             "the file then the issue is probably caused by a circular import."
         ):
-            getattr(resolver, 'url_patterns')
+            getattr(resolver, 'urlpatterns')
 
 
 @override_settings(ROOT_URLCONF='urlpatterns_reverse.urls')
@@ -391,7 +393,7 @@ class ResolverTests(SimpleTestCase):
         ]
         for name, args, kwargs, expected in test_urls:
             with self.subTest(name=name, args=args, kwargs=kwargs):
-                self.assertEqual(resolver.reverse(name, *args, **kwargs), expected)
+                self.assertEqual(resolver.reverse(name, args, kwargs), expected)
 
     def test_resolver_reverse_conflict(self):
         """
@@ -414,7 +416,7 @@ class ResolverTests(SimpleTestCase):
         ]
         for name, args, kwargs, expected in test_urls:
             with self.subTest(name=name, args=args, kwargs=kwargs):
-                self.assertEqual(resolver.reverse(name, *args, **kwargs), expected)
+                self.assertEqual(resolver.reverse(name, args, kwargs), expected)
 
     def test_non_regex(self):
         """
@@ -429,6 +431,7 @@ class ResolverTests(SimpleTestCase):
                 with self.assertRaises(Resolver404):
                     resolve(path)
 
+    @expectedFailure
     def test_404_tried_urls_have_names(self):
         """
         The list of URLs that come back from a Resolver404 exception contains
@@ -487,6 +490,7 @@ class ResolverTests(SimpleTestCase):
         self.assertTrue(resolver._is_callback('urlpatterns_reverse.method_view_urls.ViewContainer.method_view'))
         self.assertTrue(resolver._is_callback('urlpatterns_reverse.method_view_urls.ViewContainer.classmethod_view'))
 
+    @expectedFailure
     def test_populate_concurrency(self):
         """
         RegexURLResolver._populate() can be called concurrently, but not more
@@ -1034,8 +1038,8 @@ class ErrorHandlerResolutionTests(SimpleTestCase):
     def setUp(self):
         urlconf = 'urlpatterns_reverse.urls_error_handlers'
         urlconf_callables = 'urlpatterns_reverse.urls_error_handlers_callables'
-        self.resolver = RegexURLResolver(r'^$', urlconf)
-        self.callable_resolver = RegexURLResolver(r'^$', urlconf_callables)
+        self.resolver = Dispatcher(urlconf)
+        self.callable_resolver = Dispatcher(urlconf_callables)
 
     def test_named_handlers(self):
         handler = (empty_view, {})

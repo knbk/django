@@ -4,6 +4,13 @@ from types import ModuleType
 from django.core.exceptions import ImproperlyConfigured
 from django.urls.patterns import RegexPattern, RoutePattern
 from django.urls.resolvers import View, Namespace
+from django.views import defaults
+
+
+handler400 = defaults.bad_request
+handler403 = defaults.permission_denied
+handler404 = defaults.page_not_found
+handler500 = defaults.server_error
 
 
 def include(arg, namespace=None):

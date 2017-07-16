@@ -2,6 +2,7 @@ from contextlib import suppress
 from threading import local
 from urllib.parse import urlsplit, urlunsplit
 
+from django.conf import settings
 from django.utils.encoding import iri_to_uri
 from django.utils.functional import lazy
 from django.utils.translation import override
@@ -26,7 +27,9 @@ def resolve(path, urlconf=None):
 
 
 def reverse(viewname, urlconf=None, args=None, kwargs=None, current_app=None):
-    return None
+    if urlconf is None:
+        urlconf = get_urlconf()
+    return get_resolver(urlconf).reverse(viewname, args, kwargs, current_app)
 
 
 reverse_lazy = lazy(reverse, str)
@@ -75,12 +78,12 @@ def set_urlconf(urlconf_name):
             del _urlconfs.value
 
 
-def get_urlconf(default=None):
+def get_urlconf():
     """
     Return the root URLconf to use for the current thread if it has been
     changed from the default one.
     """
-    return getattr(_urlconfs, "value", default)
+    return getattr(_urlconfs, "value", settings.ROOT_URLCONF)
 
 
 def is_valid_path(path, urlconf=None):

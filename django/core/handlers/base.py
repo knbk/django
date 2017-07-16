@@ -105,22 +105,17 @@ class BaseHandler:
         """
         response = None
 
-        if hasattr(request, 'urlconf'):
-            urlconf = request.urlconf
-            set_urlconf(urlconf)
-            resolver = get_resolver(urlconf)
-        else:
-            resolver = get_resolver()
-
-        resolver_match = resolver.resolve(request.path_info)
-        callback, callback_args, callback_kwargs = resolver_match
-        request.resolver_match = resolver_match
+        if request.resolver_match is None:
+            resolver = get_resolver(request.urlconf)
+            request.resolver_match = resolver.resolve(request.path_info)
 
         # Apply view middleware
         for middleware_method in self._view_middleware:
-            response = middleware_method(request, callback, callback_args, callback_kwargs)
+            response = middleware_method(request, *request.resolver_match)
             if response:
                 break
+
+        callback, callback_args, callback_kwargs = request.resolver_match
 
         if response is None:
             wrapped_callback = self.make_view_atomic(callback)
