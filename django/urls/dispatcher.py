@@ -31,6 +31,9 @@ class Dispatcher:
         else:
             view = [view]
 
+        if current_app:
+            current_app = current_app.split(':')
+
         try:
             endpoints = self.root_namespace.reverse_lookup(view, current_app)
         except NoReverseMatch as e:

@@ -387,9 +387,9 @@ class ResolverTests(SimpleTestCase):
         resolver = get_resolver('urlpatterns_reverse.named_urls')
         test_urls = [
             # (name, args, kwargs, expected)
-            ('named-url1', (), {}, ''),
-            ('named-url2', ('arg',), {}, 'extra/arg/'),
-            ('named-url2', (), {'extra': 'arg'}, 'extra/arg/'),
+            ('named-url1', (), {}, '/'),
+            ('named-url2', ('arg',), {}, '/extra/arg/'),
+            ('named-url2', (), {'extra': 'arg'}, '/extra/arg/'),
         ]
         for name, args, kwargs, expected in test_urls:
             with self.subTest(name=name, args=args, kwargs=kwargs):
@@ -404,15 +404,15 @@ class ResolverTests(SimpleTestCase):
         test_urls = [
             # (name, args, kwargs, expected)
             # Without arguments, the last URL in urlpatterns has precedence.
-            ('name-conflict', (), {}, 'conflict/'),
+            ('name-conflict', (), {}, '/conflict/'),
             # With an arg, the last URL in urlpatterns has precedence.
-            ('name-conflict', ('arg',), {}, 'conflict-last/arg/'),
+            ('name-conflict', ('arg',), {}, '/conflict-last/arg/'),
             # With a kwarg, other url()s can be reversed.
-            ('name-conflict', (), {'first': 'arg'}, 'conflict-first/arg/'),
-            ('name-conflict', (), {'middle': 'arg'}, 'conflict-middle/arg/'),
-            ('name-conflict', (), {'last': 'arg'}, 'conflict-last/arg/'),
+            ('name-conflict', (), {'first': 'arg'}, '/conflict-first/arg/'),
+            ('name-conflict', (), {'middle': 'arg'}, '/conflict-middle/arg/'),
+            ('name-conflict', (), {'last': 'arg'}, '/conflict-last/arg/'),
             # The number and order of the arguments don't interfere with reversing.
-            ('name-conflict', ('arg', 'arg'), {}, 'conflict/arg/arg/'),
+            ('name-conflict', ('arg', 'arg'), {}, '/conflict/arg/arg/'),
         ]
         for name, args, kwargs, expected in test_urls:
             with self.subTest(name=name, args=args, kwargs=kwargs):
