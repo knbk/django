@@ -363,6 +363,7 @@ class URLPatternReverse(SimpleTestCase):
 
 
 class ResolverTests(SimpleTestCase):
+    @expectedFailure
     def test_resolver_repr(self):
         """
         Test repr of RegexURLResolver, especially when urlconf_name is a list
@@ -479,16 +480,16 @@ class ResolverTests(SimpleTestCase):
 
     def test_namespaced_view_detail(self):
         resolver = get_resolver('urlpatterns_reverse.nested_urls')
-        self.assertTrue(resolver._is_callback('urlpatterns_reverse.nested_urls.view1'))
-        self.assertTrue(resolver._is_callback('urlpatterns_reverse.nested_urls.view2'))
-        self.assertTrue(resolver._is_callback('urlpatterns_reverse.nested_urls.View3'))
-        self.assertFalse(resolver._is_callback('urlpatterns_reverse.nested_urls.blub'))
+        self.assertTrue(resolver.is_callback('urlpatterns_reverse.nested_urls.view1'))
+        self.assertTrue(resolver.is_callback('urlpatterns_reverse.nested_urls.view2'))
+        self.assertTrue(resolver.is_callback('urlpatterns_reverse.nested_urls.View3'))
+        self.assertFalse(resolver.is_callback('urlpatterns_reverse.nested_urls.blub'))
 
     def test_view_detail_as_method(self):
         # Views which have a class name as part of their path.
         resolver = get_resolver('urlpatterns_reverse.method_view_urls')
-        self.assertTrue(resolver._is_callback('urlpatterns_reverse.method_view_urls.ViewContainer.method_view'))
-        self.assertTrue(resolver._is_callback('urlpatterns_reverse.method_view_urls.ViewContainer.classmethod_view'))
+        self.assertTrue(resolver.is_callback('urlpatterns_reverse.method_view_urls.ViewContainer.method_view'))
+        self.assertTrue(resolver.is_callback('urlpatterns_reverse.method_view_urls.ViewContainer.classmethod_view'))
 
     @expectedFailure
     def test_populate_concurrency(self):

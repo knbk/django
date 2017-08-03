@@ -1,7 +1,9 @@
+import functools
 import re
 from contextlib import suppress
 from urllib.parse import quote
 
+from django.core.exceptions import ImproperlyConfigured
 from django.urls.exceptions import NoReverseMatch
 from django.urls.patterns import CombinedPattern
 from django.urls.utils import get_lookup_string
@@ -60,7 +62,10 @@ class BaseResolver:
 
     @property
     def regex(self):
-        return self.pattern.compile()
+        try:
+            return self.pattern.compile()
+        except re.error:
+            raise ImproperlyConfigured()
 
     def bind_to_pattern(self, pattern, kwargs=None):
         new = self.copy()
@@ -130,6 +135,19 @@ class View(BaseResolver):
 
         raise NoReverseMatch({'tried': [self.regex.pattern[2:]]})
 
+    @cached_property
+    def lookup_str(self):
+        """
+        A string that identifies the view (e.g. 'path.to.view_function' or
+        'path.to.ClassBasedView').
+        """
+        callback = self.view
+        if isinstance(callback, functools.partial):
+            callback = callback.func
+        if not hasattr(callback, '__name__'):
+            return callback.__module__ + "." + callback.__class__.__name__
+        return callback.__module__ + "." + callback.__qualname__
+
     def copy(self):
         return View(
             self.pattern,
@@ -179,6 +197,16 @@ class Namespace(BaseResolver):
             if hasattr(endpoint, 'namespace'):
                 app_names.setdefault(endpoint.app_name, []).append(endpoint.namespace)
         return app_names
+
+    @cached_property
+    def callback_strs(self):
+        callbacks = set()
+        for endpoint in self.endpoints:
+            if hasattr(endpoint, 'lookup_str'):
+                callbacks.add(endpoint.lookup_str)
+            elif hasattr(endpoint, 'callback_strs'):
+                callbacks.update(endpoint.callback_strs)
+        return callbacks
 
     def resolve(self, path):
         match = self.regex.search(path)

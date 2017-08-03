@@ -87,6 +87,9 @@ class Dispatcher:
             callback = getattr(conf, 'handler%s' % view_type)
         return get_callable(callback), {}
 
+    def is_callback(self, name):
+        return name in self.root_namespace.callback_strs
+
 
 @lru_cache(maxsize=None)
 def get_resolver(urlconf):

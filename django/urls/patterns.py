@@ -9,7 +9,12 @@ class RegexPattern:
         self._regex = regex
 
     def compile(self):
-        return re.compile(str(self._regex))
+        try:
+            return re.compile(str(self._regex))
+        except re.error as e:
+            raise ImproperlyConfigured(
+                '"%s" is not a valid regular expression: %s' % (self._regex, e)
+            )
 
     def get_converters(self):
         p = self.compile()
@@ -71,7 +76,13 @@ class RoutePattern:
         self._route = route
 
     def compile(self):
-        return re.compile(_route_to_regex(self._route)[0])
+        regex = _route_to_regex(self._route)[0]
+        try:
+            return re.compile(str(regex))
+        except re.error as e:
+            raise ImproperlyConfigured(
+                '"%s" is not a valid regular expression: %s' % (regex, e)
+            )
 
     def get_converters(self):
         return _route_to_regex(self._route)[1]
@@ -113,13 +124,19 @@ class CombinedPattern:
         return flattened
 
     def compile(self):
-        parts = ['^']
+        regex = '^'
         for pattern in self._patterns:
             p = pattern.compile().pattern
             if p.startswith('^'):
                 p = p[1:]
-            parts.append(p)
-        return re.compile(''.join(parts))
+            regex += p
+
+        try:
+            return re.compile(str(regex))
+        except re.error as e:
+            raise ImproperlyConfigured(
+                '"%s" is not a valid regular expression: %s' % (regex, e)
+            )
 
     def get_converters(self):
         converters = {}
