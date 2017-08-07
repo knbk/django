@@ -181,20 +181,11 @@ class URLPattern(CheckURLMixin, BaseURL):
         self._local = threading.local()
 
     def _populate(self):
-        # Short-circuit if called recursively in this thread to prevent
-        # infinite recursion. Concurrent threads may call this at the same
-        # time and will need to continue, so set 'populating' on a
-        # thread-local variable.
-        if getattr(self._local, 'populating', False):
-            return
-        self._local.populating = True
         language_code = get_language()
         regex, converters = self.compile()
         converters = dict(converters, **self._converters)
         self._regex_dict[language_code] = regex
         self._converters_dict[language_code] = converters
-        self._populated = True
-        self._local.populating = False
 
     @property
     def regex(self):
