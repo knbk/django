@@ -6,14 +6,14 @@ from .base import (
 from .converters import register_converter
 from .exceptions import NoReverseMatch, Resolver404
 from .resolvers import (
-    LocaleRegexURLResolver, RegexURLPattern, RegexURLResolver, ResolverMatch,
+    LocalePrefixPattern, ResolverMatch, URLPattern, URLResolver,
     get_ns_resolver, get_resolver,
 )
 from .utils import get_callable, get_mod_func
 
 __all__ = [
-    'LocaleRegexURLResolver', 'NoReverseMatch', 'RegexURLPattern',
-    'RegexURLResolver', 'Resolver404', 'ResolverMatch', 'clear_script_prefix',
+    'LocalePrefixPattern', 'NoReverseMatch', 'URLPattern',
+    'URLResolver', 'Resolver404', 'ResolverMatch', 'clear_script_prefix',
     'clear_url_caches', 'get_callable', 'get_mod_func', 'get_ns_resolver',
     'get_resolver', 'get_script_prefix', 'get_urlconf', 'is_valid_path',
     'path', 're_path', 'register_converter', 'resolve', 'reverse',

@@ -65,7 +65,7 @@ def get_resolver(urlconf=None):
     if urlconf is None:
         from django.conf import settings
         urlconf = settings.ROOT_URLCONF
-    return RegexURLResolver(r'^/', urlconf)
+    return URLResolver(RegexPattern(r'^/'), urlconf)
 
 
 @functools.lru_cache(maxsize=None)
@@ -73,8 +73,8 @@ def get_ns_resolver(ns_pattern, resolver):
     # Build a namespaced resolver for the given parent URLconf pattern.
     # This makes it possible to have captured parameters in the parent
     # URLconf pattern.
-    ns_resolver = RegexURLResolver(ns_pattern, resolver.url_patterns)
-    return RegexURLResolver(r'^/', [ns_resolver])
+    ns_resolver = URLResolver(RegexPattern(ns_pattern), resolver.url_patterns)
+    return URLResolver(RegexPattern(r'^/'), [ns_resolver])
 
 
 class BaseURL:
@@ -117,13 +117,16 @@ class CheckURLMixin:
             return []
 
 
-class RegexURLMixin:
+class RegexPattern:
+    def __init__(self, regex):
+        self.regex = regex
+
     def compile(self):
         try:
-            return re.compile(str(self.pattern)), {}
+            return re.compile(str(self.regex)), {}
         except re.error as e:
             raise ImproperlyConfigured(
-                '"%s" is not a valid regular expression: %s' % (self.pattern, e)
+                '"%s" is not a valid regular expression: %s' % (self.regex, e)
             )
 
 
@@ -160,29 +163,45 @@ def _route_to_regex(route):
     return ''.join(parts), converters
 
 
-class PathURLMixin:
+class RoutePattern:
+    def __init__(self, route):
+        self.regex = route
+
     def compile(self):
         # TODO: Wrap in `try/except:raise ImproperlyConfigured`
-        regex, converters = _route_to_regex(str(self.pattern))
+        regex, converters = _route_to_regex(str(self.regex))
         if isinstance(self, URLPattern):
             regex += '$'
         return re.compile(regex), converters
 
 
+class LocalePrefixPattern:
+    def __init__(self, prefix_default_language=True):
+        self.regex = ''
+        self.prefix_default_language = prefix_default_language
+
+    def compile(self):
+        language_code = get_language() or settings.LANGUAGE_CODE
+        if language_code == settings.LANGUAGE_CODE and not self.prefix_default_language:
+            regex_string = ''
+        else:
+            regex_string = '^%s/' % language_code
+        return re.compile(regex_string), {}
+
+
 class URLPattern(CheckURLMixin, BaseURL):
-    def __init__(self, regex, callback, default_args=None, name=None, converters=None):
-        self.pattern = regex
+    def __init__(self, pattern, callback, default_args=None, name=None, converters=None):
+        self.pattern = pattern
         self.callback = callback  # the view
         self.default_args = default_args or {}
         self.name = name
         self._converters = converters or {}
         self._regex_dict = {}
         self._converters_dict = {}
-        self._local = threading.local()
 
     def _populate(self):
         language_code = get_language()
-        regex, converters = self.compile()
+        regex, converters = self.pattern.compile()
         converters = dict(converters, **self._converters)
         self._regex_dict[language_code] = regex
         self._converters_dict[language_code] = converters
@@ -267,8 +286,8 @@ class URLPattern(CheckURLMixin, BaseURL):
 
 
 class URLResolver(CheckURLMixin, BaseURL):
-    def __init__(self, regex, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
-        self.pattern = regex
+    def __init__(self, pattern, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
+        self.pattern = pattern
         # urlconf_name is the dotted Python path to the module defining
         # urlpatterns. It may also be an object with an urlpatterns attribute
         # or urlpatterns itself.
@@ -336,7 +355,7 @@ class URLResolver(CheckURLMixin, BaseURL):
         namespaces = {}
         apps = {}
         language_code = get_language()
-        regex, converters = self.compile()
+        regex, converters = self.pattern.compile()
         # We need to store these two values *before* inspecting url_patterns,
         # because there might be cyclic dependencies.
         self._regex_dict[language_code] = regex
@@ -592,51 +611,3 @@ class URLResolver(CheckURLMixin, BaseURL):
                 "a valid view function or pattern name." % {'view': lookup_view_s}
             )
         raise NoReverseMatch(msg)
-
-
-class PathURLPattern(PathURLMixin, URLPattern):
-    pass
-
-
-class PathURLResolver(PathURLMixin, URLResolver):
-    pass
-
-
-class RegexURLPattern(RegexURLMixin, URLPattern):
-    pass
-
-
-class RegexURLResolver(RegexURLMixin, URLResolver):
-    pass
-
-
-class LocaleRegexURLResolver(RegexURLResolver):
-    """
-    A URL resolver that always matches the active language code as URL prefix.
-
-    Rather than taking a regex argument, we just override the ``regex``
-    function to always return the active language-code as regex.
-    """
-    def __init__(
-        self, urlconf_name, default_kwargs=None, app_name=None, namespace=None,
-        prefix_default_language=True,
-    ):
-        super().__init__(None, urlconf_name, default_kwargs, app_name, namespace)
-        self.prefix_default_language = prefix_default_language
-        self._regex_dict = {}
-
-    @property
-    def pattern(self):
-        language_code = get_language() or settings.LANGUAGE_CODE
-        if language_code == settings.LANGUAGE_CODE and not self.prefix_default_language:
-            regex_string = ''
-        else:
-            regex_string = '^%s/' % language_code
-        return regex_string
-
-    @pattern.setter
-    def pattern(self, value):
-        # For the `LocaleRegexURLResolver`, we don't want to get passed a
-        # pattern, however `super()` *does* set `pattern`. In `__init__`, we
-        # pass in `None`, so let's just verify that that is actually the case.
-        assert value is None

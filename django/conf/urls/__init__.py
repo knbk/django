@@ -1,7 +1,7 @@
 from importlib import import_module
 
 from django.core.exceptions import ImproperlyConfigured
-from django.urls import LocaleRegexURLResolver, re_path
+from django.urls import LocalePrefixPattern, re_path
 from django.views import defaults
 
 __all__ = ['handler400', 'handler403', 'handler404', 'handler500', 'include', 'url']
@@ -53,7 +53,7 @@ def include(arg, namespace=None):
         for url_pattern in patterns:
             # Test if the LocaleRegexURLResolver is used within the include;
             # this should throw an error since this is not allowed!
-            if isinstance(url_pattern, LocaleRegexURLResolver):
+            if isinstance(url_pattern.pattern, LocalePrefixPattern):
                 raise ImproperlyConfigured(
                     'Using i18n_patterns in an included URLconf is not allowed.')
 
