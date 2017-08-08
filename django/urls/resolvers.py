@@ -119,15 +119,18 @@ class CheckURLMixin:
 
 class RegexPattern:
     def __init__(self, regex):
-        self.regex = regex
+        self._regex = regex
 
     def compile(self):
         try:
-            return re.compile(str(self.regex)), {}
+            return re.compile(str(self._regex)), {}
         except re.error as e:
             raise ImproperlyConfigured(
-                '"%s" is not a valid regular expression: %s' % (self.regex, e)
+                '"%s" is not a valid regular expression: %s' % (self._regex, e)
             )
+
+    def __str__(self):
+        return self._regex
 
 
 _PATH_PARAMETER_COMPONENT_RE = re.compile(
@@ -164,29 +167,39 @@ def _route_to_regex(route):
 
 
 class RoutePattern:
-    def __init__(self, route):
-        self.regex = route
+    def __init__(self, route, is_endpoint=False):
+        self._route = route
+        self._is_endpoint = is_endpoint
 
     def compile(self):
         # TODO: Wrap in `try/except:raise ImproperlyConfigured`
-        regex, converters = _route_to_regex(str(self.regex))
-        if isinstance(self, URLPattern):
+        regex, converters = _route_to_regex(str(self._route))
+        if self._is_endpoint:
             regex += '$'
         return re.compile(regex), converters
+
+    def __str__(self):
+        return self._route
 
 
 class LocalePrefixPattern:
     def __init__(self, prefix_default_language=True):
-        self.regex = ''
         self.prefix_default_language = prefix_default_language
 
-    def compile(self):
+    @property
+    def _regex_string(self):
         language_code = get_language() or settings.LANGUAGE_CODE
         if language_code == settings.LANGUAGE_CODE and not self.prefix_default_language:
             regex_string = ''
         else:
             regex_string = '^%s/' % language_code
-        return re.compile(regex_string), {}
+        return regex_string
+
+    def compile(self):
+        return re.compile(self._regex_string), {}
+
+    def __str__(self):
+        return self._regex_string
 
 
 class URLPattern(CheckURLMixin, BaseURL):

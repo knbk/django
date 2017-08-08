@@ -204,9 +204,9 @@ def re_path(regex, view, kwargs=None, name=None, converters=None):
 
 
 def path(regex, view, kwargs=None, name=None, converters=None):
-    pattern = RoutePattern(regex)
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
+        pattern = RoutePattern(regex, is_endpoint=False)
         urlconf_module, app_name, namespace = view
         return URLResolver(
             pattern,
@@ -217,6 +217,7 @@ def path(regex, view, kwargs=None, name=None, converters=None):
             converters=converters
         )
     elif callable(view):
+        pattern = RoutePattern(regex, is_endpoint=True)
         return URLPattern(pattern, view, kwargs, name, converters=converters)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
