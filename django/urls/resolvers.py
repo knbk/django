@@ -207,6 +207,9 @@ class RegexPattern(CheckURLMixin):
     def __str__(self):
         return self._regex
 
+    def __repr__(self):
+        return "<RegexPattern '%s'>" % str(self)
+
 
 _PATH_PARAMETER_COMPONENT_RE = re.compile(
     '<(?:(?P<converter>[^:]+):)?(?P<parameter>\w+)>'
@@ -282,6 +285,9 @@ class RoutePattern(CheckURLMixin):
     def __str__(self):
         return self._route
 
+    def __repr__(self):
+        return "<RoutePattern '%s'>" % str(self)
+
 
 class LocalePrefixPattern:
     def __init__(self, prefix_default_language=True):
@@ -315,6 +321,9 @@ class LocalePrefixPattern:
 
     def __str__(self):
         return self.language_prefix
+
+    def __repr__(self):
+        return '<LocalePrefixPattern prefix_defualt_language=%r>' % self.prefix_default_language
 
 
 class URLPattern(BaseURL):

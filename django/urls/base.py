@@ -1,6 +1,7 @@
 from threading import local
 from urllib.parse import urlsplit, urlunsplit
 
+from django.urls.conf import URLConf, Include, Endpoint
 from django.utils.encoding import iri_to_uri
 from django.utils.functional import lazy
 from django.utils.translation import override
@@ -185,38 +186,23 @@ def translate_url(url, lang_code):
 
 
 def re_path(regex, view, kwargs=None, name=None, converters=None):
-    if isinstance(view, (list, tuple)):
-        # For include(...) processing.
+    if isinstance(view, URLConf):
         pattern = RegexPattern(regex, is_endpoint=False, converters=converters)
-        urlconf_module, app_name, namespace = view
-        return URLResolver(
-            pattern,
-            urlconf_module,
-            kwargs,
-            app_name=app_name,
-            namespace=namespace,
-        )
+        return Include(pattern, view, kwargs, converters)
     elif callable(view):
         pattern = RegexPattern(regex, name=name, is_endpoint=True, converters=converters)
-        return URLPattern(pattern, view, kwargs, name)
+        return Endpoint(pattern, view, kwargs, name, converters=converters)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
 
 
-def path(regex, view, kwargs=None, name=None):
-    if isinstance(view, (list, tuple)):
+def path(regex, view, kwargs=None, name=None, converters=None):
+    if isinstance(view, URLConf):
         # For include(...) processing.
         pattern = RoutePattern(regex, is_endpoint=False)
-        urlconf_module, app_name, namespace = view
-        return URLResolver(
-            pattern,
-            urlconf_module,
-            kwargs,
-            app_name=app_name,
-            namespace=namespace,
-        )
+        return Include(pattern, view, kwargs, converters)
     elif callable(view):
         pattern = RoutePattern(regex, name=name, is_endpoint=True)
-        return URLPattern(pattern, view, kwargs, name)
+        return Endpoint(pattern, view, kwargs, name, converters=converters)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
