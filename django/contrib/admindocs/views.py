@@ -401,12 +401,12 @@ def extract_views_from_urlpatterns(urlpatterns, base='', namespace=None):
                 continue
             views.extend(extract_views_from_urlpatterns(
                 patterns,
-                base + p.regex.pattern,
+                base + p.pattern.regex.pattern,
                 (namespace or []) + (p.namespace and [p.namespace] or [])
             ))
         elif hasattr(p, 'callback'):
             try:
-                views.append((p.callback, base + p.regex.pattern,
+                views.append((p.callback, base + p.pattern.regex.pattern,
                               namespace, p.name))
             except ViewDoesNotExist:
                 continue

@@ -185,9 +185,9 @@ def translate_url(url, lang_code):
 
 
 def re_path(regex, view, kwargs=None, name=None, converters=None):
-    pattern = RegexPattern(regex)
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
+        pattern = RegexPattern(regex, is_endpoint=False, converters=converters)
         urlconf_module, app_name, namespace = view
         return URLResolver(
             pattern,
@@ -195,15 +195,15 @@ def re_path(regex, view, kwargs=None, name=None, converters=None):
             kwargs,
             app_name=app_name,
             namespace=namespace,
-            converters=converters
         )
     elif callable(view):
-        return URLPattern(pattern, view, kwargs, name, converters=converters)
+        pattern = RegexPattern(regex, is_endpoint=True, converters=converters)
+        return URLPattern(pattern, view, kwargs, name)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
 
 
-def path(regex, view, kwargs=None, name=None, converters=None):
+def path(regex, view, kwargs=None, name=None):
     if isinstance(view, (list, tuple)):
         # For include(...) processing.
         pattern = RoutePattern(regex, is_endpoint=False)
@@ -214,10 +214,9 @@ def path(regex, view, kwargs=None, name=None, converters=None):
             kwargs,
             app_name=app_name,
             namespace=namespace,
-            converters=converters
         )
     elif callable(view):
         pattern = RoutePattern(regex, is_endpoint=True)
-        return URLPattern(pattern, view, kwargs, name, converters=converters)
+        return URLPattern(pattern, view, kwargs, name)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')

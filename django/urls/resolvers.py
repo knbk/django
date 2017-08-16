@@ -77,6 +77,29 @@ def get_ns_resolver(ns_pattern, resolver):
     return URLResolver(RegexPattern(r'^/'), [ns_resolver])
 
 
+class LocaleRegexDescriptor:
+    def __init__(self, attr):
+        self.attr = attr
+
+    def __get__(self, instance, cls=None):
+        """
+        Return a compiled regular expression based on the active language.
+        """
+        if instance is None:
+            return self
+        # As a performance optimization, if the given regex string is a regular
+        # string (not a lazily-translated string proxy), compile it once and
+        # avoid per-language compilation.
+        pattern = getattr(instance, self.attr)
+        if isinstance(pattern, str):
+            instance.__dict__['regex'] = instance._compile(pattern)
+            return instance.__dict__['regex']
+        language_code = get_language()
+        if language_code not in instance._regex_dict:
+            instance._regex_dict[language_code] = instance._compile(str(pattern))
+        return instance._regex_dict[language_code]
+
+
 class BaseURL:
     """
     Base class for URL instances.
@@ -85,16 +108,16 @@ class BaseURL:
 
 
 class CheckURLMixin:
-    def describe(self):
+    def describe(self, pattern_name):
         """
         Format the URL pattern for display in warning messages.
         """
-        description = "'{}'".format(self.regex.pattern)
-        if getattr(self, 'name', False):
-            description += " [name='{}']".format(self.name)
+        description = "'{}'".format(self)
+        if pattern_name:
+            description += " [name='{}']".format(pattern_name)
         return description
 
-    def _check_pattern_startswith_slash(self):
+    def _check_pattern_startswith_slash(self, pattern_name):
         """
         Check that the pattern does not begin with a forward slash.
         """
@@ -108,7 +131,7 @@ class CheckURLMixin:
                 "Your URL pattern {} has a regex beginning with a '/'. Remove this "
                 "slash as it is unnecessary. If this pattern is targeted in an "
                 "include(), ensure the include() pattern has a trailing '/'.".format(
-                    self.describe()
+                    self.describe(pattern_name)
                 ),
                 id="urls.W002",
             )
@@ -116,17 +139,68 @@ class CheckURLMixin:
         else:
             return []
 
+    def _check_include_trailing_dollar(self, pattern_name):
+        """
+        Check that include is not used with a regex ending with a dollar.
+        """
+        regex_pattern = self.regex.pattern
+        if regex_pattern.endswith('$') and not regex_pattern.endswith(r'\$'):
+            warning = Warning(
+                "Your URL pattern {} uses include with a regex ending with a '$'. "
+                "Remove the dollar from the regex to avoid problems including "
+                "URLs.".format(self.describe(pattern_name)),
+                id="urls.W001",
+            )
+            return [warning]
+        else:
+            return []
 
-class RegexPattern:
-    def __init__(self, regex):
+
+class RegexPattern(CheckURLMixin):
+    def __init__(self, regex, is_endpoint=False, converters=None):
         self._regex = regex
+        self._regex_dict = {}
+        self._is_endpoint = is_endpoint
+        self.converters = converters or {}
 
-    def compile(self):
+    regex = LocaleRegexDescriptor('_regex')
+
+    def match(self, path):
+        match = self.regex.search(path)
+        if match:
+            # If there are any named groups, use those as kwargs, ignoring
+            # non-named groups. Otherwise, pass all non-named arguments as
+            # positional arguments.
+            kwargs = match.groupdict()
+            args = () if kwargs else match.groups()
+            # In both cases, pass any extra_kwargs as **kwargs.
+
+            for key, value in kwargs.items():
+                if key in self.converters:
+                    converter = self.converters[key]
+                    try:
+                        kwargs[key] = converter.to_python(value)
+                    except ValueError:
+                        return None
+            return path[match.end():], args, kwargs
+        return None
+
+    def check(self, pattern_name):
+        warnings = []
+        warnings.extend(self._check_pattern_startswith_slash(pattern_name))
+        if not self._is_endpoint:
+            warnings.extend(self._check_include_trailing_dollar(pattern_name))
+        return warnings
+
+    def _compile(self, regex):
+        """
+        Compile and return the given regular expression.
+        """
         try:
-            return re.compile(str(self._regex)), {}
+            return re.compile(regex)
         except re.error as e:
             raise ImproperlyConfigured(
-                '"%s" is not a valid regular expression: %s' % (self._regex, e)
+                '"%s" is not a valid regular expression: %s' % (regex, e)
             )
 
     def __str__(self):
@@ -138,7 +212,7 @@ _PATH_PARAMETER_COMPONENT_RE = re.compile(
 )
 
 
-def _route_to_regex(route):
+def _route_to_regex(route, is_endpoint=False):
     parts = ['^']
     converters = {}
     while True:
@@ -163,20 +237,45 @@ def _route_to_regex(route):
         converter = get_converter(raw_converter)
         converters[parameter] = converter
         parts.append('(?P<' + parameter + '>' + converter.regex + ')')
+    if is_endpoint:
+        parts.append('$')
     return ''.join(parts), converters
 
 
-class RoutePattern:
+class RoutePattern(CheckURLMixin):
     def __init__(self, route, is_endpoint=False):
         self._route = route
+        self._regex_dict = {}
         self._is_endpoint = is_endpoint
+        self.converters = _route_to_regex(str(route), is_endpoint)[1]
 
-    def compile(self):
-        # TODO: Wrap in `try/except:raise ImproperlyConfigured`
-        regex, converters = _route_to_regex(str(self._route))
-        if self._is_endpoint:
-            regex += '$'
-        return re.compile(regex), converters
+    regex = LocaleRegexDescriptor('_route')
+
+    def match(self, path):
+        match = self.regex.search(path)
+        if match:
+            # If there are any named groups, use those as kwargs, ignoring
+            # non-named groups. Otherwise, pass all non-named arguments as
+            # positional arguments.
+            kwargs = match.groupdict()
+            args = () if kwargs else match.groups()
+            # In both cases, pass any extra_kwargs as **kwargs.
+
+            for key, value in kwargs.items():
+                if key in self.converters:
+                    converter = self.converters[key]
+                    try:
+                        kwargs[key] = converter.to_python(value)
+                    except ValueError:
+                        return None
+            return path[match.end():], args, kwargs
+        return None
+
+    def check(self, pattern_name):
+        return self._check_pattern_startswith_slash(pattern_name)
+
+    def _compile(self, route):
+        return re.compile(_route_to_regex(route, self._is_endpoint)[0])
 
     def __str__(self):
         return self._route
@@ -185,61 +284,47 @@ class RoutePattern:
 class LocalePrefixPattern:
     def __init__(self, prefix_default_language=True):
         self.prefix_default_language = prefix_default_language
+        self.converters = {}
 
     @property
-    def _regex_string(self):
+    def regex(self):
+        # This is only used by reverse, and cached in _reverse_dict
+        return re.compile(self.language_prefix)
+
+    @property
+    def language_prefix(self):
         language_code = get_language() or settings.LANGUAGE_CODE
         if language_code == settings.LANGUAGE_CODE and not self.prefix_default_language:
-            regex_string = ''
+            return ''
         else:
-            regex_string = '^%s/' % language_code
-        return regex_string
+            return '%s/' % language_code
 
-    def compile(self):
-        return re.compile(self._regex_string), {}
+    def match(self, path):
+        language_prefix = self.language_prefix
+        if path.startswith(language_prefix):
+            return path[len(language_prefix):], (), {}
+        return None
+
+    def check(self, pattern_name):
+        return []
 
     def __str__(self):
-        return self._regex_string
+        return self.language_prefix
 
 
-class URLPattern(CheckURLMixin, BaseURL):
-    def __init__(self, pattern, callback, default_args=None, name=None, converters=None):
+class URLPattern(BaseURL):
+    def __init__(self, pattern, callback, default_args=None, name=None):
         self.pattern = pattern
         self.callback = callback  # the view
         self.default_args = default_args or {}
         self.name = name
-        self._converters = converters or {}
-        self._regex_dict = {}
-        self._converters_dict = {}
-
-    def _populate(self):
-        language_code = get_language()
-        regex, converters = self.pattern.compile()
-        converters = dict(converters, **self._converters)
-        self._regex_dict[language_code] = regex
-        self._converters_dict[language_code] = converters
-
-    @property
-    def regex(self):
-        language_code = get_language()
-        if language_code not in self._regex_dict:
-            self._populate()
-        return self._regex_dict[language_code]
-
-    @property
-    def converters(self):
-        language_code = get_language()
-        if language_code not in self._converters_dict:
-            self._populate()
-        return self._converters_dict[language_code]
 
     def __repr__(self):
-        return '<%s %s %s>' % (self.__class__.__name__, self.name, self.regex.pattern)
+        return '<%s %s %s>' % (self.__class__.__name__, self.name, self.pattern)
 
     def check(self):
         warnings = self._check_pattern_name()
-        if not warnings:
-            warnings = self._check_pattern_startswith_slash()
+        warnings.extend(self.pattern.check(self.name))
         return warnings
 
     def _check_pattern_name(self):
@@ -249,7 +334,7 @@ class URLPattern(CheckURLMixin, BaseURL):
         if self.name is not None and ":" in self.name:
             warning = Warning(
                 "Your URL pattern {} has a name including a ':'. Remove the colon, to "
-                "avoid ambiguous namespace references.".format(self.describe()),
+                "avoid ambiguous namespace references.".format(self.pattern.describe(self.name)),
                 id="urls.W003",
             )
             return [warning]
@@ -257,29 +342,10 @@ class URLPattern(CheckURLMixin, BaseURL):
             return []
 
     def resolve(self, path):
-        match = self.regex.search(path)
+        match = self.pattern.match(path)
         if match:
-            # If there are any named groups, use those as kwargs, ignoring
-            # non-named groups. Otherwise, pass all non-named arguments as
-            # positional arguments.
-            kwargs = match.groupdict()
-            args = () if kwargs else match.groups()
-            # In both cases, pass any extra_kwargs as **kwargs.
+            new_path, args, kwargs = match
             kwargs.update(self.default_args)
-
-            # Check if we need to convert any arguments to Python.
-            if self.converters:
-                for key, value in kwargs.items():
-                    try:
-                        converter = self.converters[key]
-                    except KeyError:
-                        pass
-                    else:
-                        try:
-                            kwargs[key] = converter.to_python(value)
-                        except ValueError:
-                            return None
-
             return ResolverMatch(self.callback, args, kwargs, self.name)
 
     @cached_property
@@ -298,8 +364,8 @@ class URLPattern(CheckURLMixin, BaseURL):
         return callback.__module__ + "." + callback.__qualname__
 
 
-class URLResolver(CheckURLMixin, BaseURL):
-    def __init__(self, pattern, urlconf_name, default_kwargs=None, app_name=None, namespace=None, converters=None):
+class URLResolver(BaseURL):
+    def __init__(self, pattern, urlconf_name, default_kwargs=None, app_name=None, namespace=None):
         self.pattern = pattern
         # urlconf_name is the dotted Python path to the module defining
         # urlpatterns. It may also be an object with an urlpatterns attribute
@@ -309,9 +375,6 @@ class URLResolver(CheckURLMixin, BaseURL):
         self.default_kwargs = default_kwargs or {}
         self.namespace = namespace
         self.app_name = app_name
-        self._converters = converters or {}
-        self._regex_dict = {}
-        self._converters_dict = {}
         self._reverse_dict = {}
         self._namespace_dict = {}
         self._app_dict = {}
@@ -329,32 +392,16 @@ class URLResolver(CheckURLMixin, BaseURL):
             urlconf_repr = repr(self.urlconf_name)
         return '<%s %s (%s:%s) %s>' % (
             self.__class__.__name__, urlconf_repr, self.app_name,
-            self.namespace, self.regex.pattern,
+            self.namespace, self.pattern,
         )
 
     def check(self):
-        warnings = self._check_include_trailing_dollar()
+        warnings = []
         for pattern in self.url_patterns:
             warnings.extend(check_resolver(pattern))
         if not warnings:
-            warnings = self._check_pattern_startswith_slash()
+            warnings = self.pattern.check(None)
         return warnings
-
-    def _check_include_trailing_dollar(self):
-        """
-        Check that include is not used with a regex ending with a dollar.
-        """
-        regex_pattern = self.regex.pattern
-        if regex_pattern.endswith('$') and not regex_pattern.endswith(r'\$'):
-            warning = Warning(
-                "Your URL pattern {} uses include with a regex ending with a '$'. "
-                "Remove the dollar from the regex to avoid problems including "
-                "URLs.".format(self.describe()),
-                id="urls.W001",
-            )
-            return [warning]
-        else:
-            return []
 
     def _populate(self):
         # Short-circuit if called recursively in this thread to prevent
@@ -368,73 +415,58 @@ class URLResolver(CheckURLMixin, BaseURL):
         namespaces = {}
         apps = {}
         language_code = get_language()
-        regex, converters = self.pattern.compile()
-        # We need to store these two values *before* inspecting url_patterns,
-        # because there might be cyclic dependencies.
-        self._regex_dict[language_code] = regex
-        self._converters_dict[language_code] = converters
-        for pattern in reversed(self.url_patterns):
-            if not isinstance(pattern, BaseURL):
-                msg = (
-                    "Your URL pattern {!r} is invalid. Ensure that urlpatterns "
-                    "is a list of url() instances."
-                ).format(pattern)
-                raise ImproperlyConfigured(msg)
-            if isinstance(pattern, URLPattern):
-                self._callback_strs.add(pattern.lookup_str)
-            p_pattern = pattern.regex.pattern
-            if p_pattern.startswith('^'):
-                p_pattern = p_pattern[1:]
-            if isinstance(pattern, URLResolver):
-                if pattern.namespace:
-                    namespaces[pattern.namespace] = (p_pattern, pattern)
-                    if pattern.app_name:
-                        apps.setdefault(pattern.app_name, []).append(pattern.namespace)
-                else:
-                    parent_pat = pattern.regex.pattern
-                    for name in pattern.reverse_dict:
-                        for matches, pat, defaults, pat_converters in pattern.reverse_dict.getlist(name):
-                            new_matches = normalize(parent_pat + pat)
-                            lookups.appendlist(
-                                name,
-                                (
-                                    new_matches,
-                                    p_pattern + pat,
-                                    dict(defaults, **pattern.default_kwargs),
-                                    dict(self.converters, **pat_converters),
+        try:
+            for url_pattern in reversed(self.url_patterns):
+                if not isinstance(url_pattern, BaseURL):
+                    msg = (
+                        "Your URL pattern {!r} is invalid. Ensure that urlpatterns "
+                        "is a list of url() instances."
+                    ).format(url_pattern)
+                    raise ImproperlyConfigured(msg)
+                p_pattern = url_pattern.pattern.regex.pattern
+                if p_pattern.startswith('^'):
+                    p_pattern = p_pattern[1:]
+                if isinstance(url_pattern, URLPattern):
+                    self._callback_strs.add(url_pattern.lookup_str)
+                    bits = normalize(url_pattern.pattern.regex.pattern)
+                    lookups.appendlist(
+                        url_pattern.callback,
+                        (bits, p_pattern, url_pattern.default_args, url_pattern.pattern.converters)
+                    )
+                    if url_pattern.name is not None:
+                        lookups.appendlist(
+                            url_pattern.name,
+                            (bits, p_pattern, url_pattern.default_args, url_pattern.pattern.converters)
+                        )
+                elif isinstance(url_pattern, URLResolver):
+                    url_pattern._populate()
+                    if url_pattern.app_name:
+                        apps.setdefault(url_pattern.app_name, []).append(url_pattern.namespace)
+                        namespaces[url_pattern.namespace] = (p_pattern, url_pattern)
+                    else:
+                        for name in url_pattern.reverse_dict:
+                            for matches, pat, defaults, converters in url_pattern.reverse_dict.getlist(name):
+                                new_matches = normalize(p_pattern + pat)
+                                lookups.appendlist(
+                                    name,
+                                    (
+                                        new_matches,
+                                        p_pattern + pat,
+                                        dict(defaults, **url_pattern.default_kwargs),
+                                        dict(self.pattern.converters, **converters)
+                                    )
                                 )
-                            )
-                    for namespace, (prefix, sub_pattern) in pattern.namespace_dict.items():
-                        namespaces[namespace] = (p_pattern + prefix, sub_pattern)
-                    for app_name, namespace_list in pattern.app_dict.items():
-                        apps.setdefault(app_name, []).extend(namespace_list)
-                if not getattr(pattern._local, 'populating', False):
-                    pattern._populate()
-                self._callback_strs.update(pattern._callback_strs)
-            else:
-                bits = normalize(p_pattern)
-                lookups.appendlist(pattern.callback, (bits, p_pattern, pattern.default_args, pattern.converters))
-                if pattern.name is not None:
-                    lookups.appendlist(pattern.name, (bits, p_pattern, pattern.default_args, pattern.converters))
-        self._reverse_dict[language_code] = lookups
-        self._namespace_dict[language_code] = namespaces
-        self._app_dict[language_code] = apps
-        self._populated = True
-        self._local.populating = False
-
-    @property
-    def regex(self):
-        language_code = get_language()
-        if language_code not in self._regex_dict:
-            self._populate()
-        return self._regex_dict[language_code]
-
-    @property
-    def converters(self):
-        language_code = get_language()
-        if language_code not in self._converters_dict:
-            self._populate()
-        return self._converters_dict[language_code]
+                        for namespace, (prefix, sub_pattern) in url_pattern.namespace_dict.items():
+                            namespaces[namespace] = (p_pattern + prefix, sub_pattern)
+                        for app_name, namespace_list in url_pattern.app_dict.items():
+                            apps.setdefault(app_name, []).extend(namespace_list)
+                    self._callback_strs.update(url_pattern._callback_strs)
+            self._namespace_dict[language_code] = namespaces
+            self._app_dict[language_code] = apps
+            self._reverse_dict[language_code] = lookups
+            self._populated = True
+        finally:
+            self._local.populating = False
 
     @property
     def reverse_dict(self):
@@ -463,11 +495,13 @@ class URLResolver(CheckURLMixin, BaseURL):
         return name in self._callback_strs
 
     def resolve(self, path):
+        if not self._populated:
+            self._populate()  # This checks for some common errors
         path = str(path)  # path may be a reverse_lazy object
         tried = []
-        match = self.regex.search(path)
+        match = self.pattern.match(path)
         if match:
-            new_path = path[match.end():]
+            new_path = match[0]
             for pattern in self.url_patterns:
                 try:
                     sub_match = pattern.resolve(new_path)
@@ -480,18 +514,8 @@ class URLResolver(CheckURLMixin, BaseURL):
                 else:
                     if sub_match:
                         # Merge captured arguments in match with submatch
-                        sub_match_dict = dict(match.groupdict(), **self.default_kwargs)
-                        # Check if we need to convert any arguments to Python.
-                        # At this point, sub_match_dict only contains items from this match, and not from any
-                        # sub-matches yet.
-                        if self.converters:
-                            for key, value in sub_match_dict.items():
-                                try:
-                                    converter = self.converters[key]
-                                except KeyError:
-                                    pass
-                                else:
-                                    sub_match_dict[key] = converter.to_python(value)
+                        sub_match_dict = dict(match[2], **self.default_kwargs)
+
                         # Update the sub_match_dict with the kwargs from the sub_match.
                         sub_match_dict.update(sub_match.kwargs)
 
@@ -499,7 +523,7 @@ class URLResolver(CheckURLMixin, BaseURL):
                         # Otherwise, pass all non-named arguments as positional arguments.
                         sub_match_args = sub_match.args
                         if not sub_match_dict:
-                            sub_match_args = match.groups() + sub_match.args
+                            sub_match_args = match[1] + sub_match.args
 
                         return ResolverMatch(
                             sub_match.func,
