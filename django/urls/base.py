@@ -197,7 +197,7 @@ def re_path(regex, view, kwargs=None, name=None, converters=None):
             namespace=namespace,
         )
     elif callable(view):
-        pattern = RegexPattern(regex, is_endpoint=True, converters=converters)
+        pattern = RegexPattern(regex, name=name, is_endpoint=True, converters=converters)
         return URLPattern(pattern, view, kwargs, name)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
@@ -216,7 +216,7 @@ def path(regex, view, kwargs=None, name=None):
             namespace=namespace,
         )
     elif callable(view):
-        pattern = RoutePattern(regex, is_endpoint=True)
+        pattern = RoutePattern(regex, name=name, is_endpoint=True)
         return URLPattern(pattern, view, kwargs, name)
     else:
         raise TypeError('view must be a callable or a list/tuple in the case of include().')
