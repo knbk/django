@@ -327,6 +327,26 @@ class LoaderTests(TestCase):
 
         self.assertEqual(plan, expected_plan)
 
+    @override_settings(MIGRATION_MODULES={
+        "app1": "migrations.test_migrations_squashed_dependencies.app1",
+        "app2": "migrations.test_migrations_squashed_dependencies.app2",
+    })
+    @modify_settings(INSTALLED_APPS={'append': [
+        "migrations.test_migrations_squashed_dependencies.app1",
+        "migrations.test_migrations_squashed_dependencies.app2",
+    ]})
+    def test_loading_squashed_complex_squashed_dependencies(self):
+        loader = MigrationLoader(connection)
+        recorder = MigrationRecorder(connection)
+        recorder.record_applied('app2', '1_auto')
+        recorder.record_applied('app2', '2_auto')
+        with modify_settings(INSTALLED_APPS={'remove': [
+            "migrations.test_migrations_squashed_dependencies.app1",
+        ]}):
+            loader.build_graph()
+
+        self.assertNotIn(('app1', '1_auto'), loader.graph)
+
     @override_settings(MIGRATION_MODULES={"migrations": "migrations.test_migrations_squashed_erroneous"})
     def test_loading_squashed_erroneous(self):
         "Tests loading a complex but erroneous set of squashed migrations"

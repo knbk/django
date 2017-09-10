@@ -75,6 +75,10 @@ class Node:
             self.__dict__['_descendants'] = list(OrderedSet(descendants))
         return self.__dict__['_descendants']
 
+    def replace(self, *replaced_by):
+        self.replaced_by = set(replaced_by)
+        self.__class__ = ReplacedNode
+
 
 class DummyNode(Node):
     def __init__(self, key, origin, error_message):
@@ -94,6 +98,12 @@ class DummyNode(Node):
 
     def raise_error(self):
         raise NodeNotFoundError(self.error_message, self.key, origin=self.origin)
+
+
+class ReplacedNode(Node):
+    def __init__(self, key, *replaced_by):
+        super().__init__(key)
+        self.replaced_by = set(replaced_by)
 
 
 class MigrationGraph:
@@ -141,6 +151,11 @@ class MigrationGraph:
         self.node_map[key] = node
         self.nodes[key] = None
 
+    def add_replaced_node(self, key, *replaced_by):
+        node = ReplacedNode(key, *replaced_by)
+        self.node_map[key] = node
+        self.nodes[key] = None
+
     def add_dependency(self, migration, child, parent, skip_validation=False):
         """
         This may create dummy nodes if they don't yet exist. If
@@ -182,23 +197,11 @@ class MigrationGraph:
                 replacement
             ) from err
         for replaced_key in replaced:
-            self.nodes.pop(replaced_key, None)
-            replaced_node = self.node_map.pop(replaced_key, None)
-            if replaced_node:
-                for child in replaced_node.children:
-                    child.parents.remove(replaced_node)
-                    # We don't want to create dependencies between the replaced
-                    # node and the replacement node as this would lead to
-                    # self-referencing on the replacement node at a later iteration.
-                    if child.key not in replaced:
-                        replacement_node.add_child(child)
-                        child.add_parent(replacement_node)
-                for parent in replaced_node.parents:
-                    parent.children.remove(replaced_node)
-                    # Again, to avoid self-referencing.
-                    if parent.key not in replaced:
-                        replacement_node.add_parent(parent)
-                        parent.add_child(replacement_node)
+            if replaced_key in self.node_map:
+                self.node_map[replaced_key].replace(replacement_node)
+                self.nodes[replaced_key] = None
+            else:
+                self.add_replaced_node(replaced_key, replacement_node)
         self.clear_cache()
 
     def remove_replacement_node(self, replacement, replaced):
@@ -208,9 +211,8 @@ class MigrationGraph:
         - the list of nodes it would have replaced. Don't remap its parent
         nodes as they are expected to be correct already.
         """
-        self.nodes.pop(replacement, None)
         try:
-            replacement_node = self.node_map.pop(replacement)
+            replacement_node = self.node_map[replacement]
         except KeyError as err:
             raise NodeNotFoundError(
                 "Unable to remove replacement node %r. It was either never added"
@@ -218,28 +220,39 @@ class MigrationGraph:
                 replacement
             ) from err
         replaced_nodes = set()
-        replaced_nodes_parents = set()
         for key in replaced:
             replaced_node = self.node_map.get(key)
             if replaced_node:
                 replaced_nodes.add(replaced_node)
-                replaced_nodes_parents |= replaced_node.parents
-        # We're only interested in the latest replaced node, so filter out
-        # replaced nodes that are parents of other replaced nodes.
-        replaced_nodes -= replaced_nodes_parents
-        for child in replacement_node.children:
-            child.parents.remove(replacement_node)
-            for replaced_node in replaced_nodes:
-                replaced_node.add_child(child)
-                child.add_parent(replaced_node)
-        for parent in replacement_node.parents:
-            parent.children.remove(replacement_node)
-            # NOTE: There is no need to remap parent dependencies as we can
-            # assume the replaced nodes already have the correct ancestry.
+        replacement_node.replace(*replaced_nodes)
+        self.nodes[replacement] = None
         self.clear_cache()
+
+    def resolve_replaced_nodes(self):
+        for key, node in list(self.node_map.items()):
+            if isinstance(node, ReplacedNode):
+                first, last = None, None
+                for replacement_key in node.replaced_by:
+                    if not self.node_map[replacement_key].parents & node.replaced_by:
+                        first = self.node_map[replacement_key]
+                    if not self.node_map[replacement_key].children & node.replaced_by:
+                        last = self.node_map[replacement_key]
+                for child in node.children:
+                    child.parents.discard(node)
+                    if last is not None:
+                        child.add_parent(last)
+                        last.add_child(child)
+                for parent in node.parents:
+                    parent.children.discard(node)
+                    if first is not None:
+                        parent.add_child(first)
+                        first.add_parent(parent)
+                del self.node_map[key]
+                del self.nodes[key]
 
     def validate_consistency(self):
         """Ensure there are no dummy nodes remaining in the graph."""
+        self.resolve_replaced_nodes()
         [n.raise_error() for n in self.node_map.values() if isinstance(n, DummyNode)]
 
     def clear_cache(self):

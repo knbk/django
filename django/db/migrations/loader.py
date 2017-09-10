@@ -210,14 +210,9 @@ class MigrationLoader:
         self.replacements = {}
         for key, migration in self.disk_migrations.items():
             self.graph.add_node(key, migration)
-            # Internal (aka same-app) dependencies.
-            self.add_internal_dependencies(key, migration)
             # Replacing migrations.
             if migration.replaces:
                 self.replacements[key] = migration
-        # Add external dependencies now that the internal ones have been resolved.
-        for key, migration in self.disk_migrations.items():
-            self.add_external_dependencies(key, migration)
         # Carry out replacements where possible.
         for key, migration in self.replacements.items():
             # Get applied status of each of this migration's replacement targets.
@@ -236,6 +231,14 @@ class MigrationLoader:
                 # This replacing migration cannot be used because it is partially applied.
                 # Remove it from the graph and remap dependencies to it (#25945).
                 self.graph.remove_replacement_node(key, migration.replaces)
+        # Internal (aka same-app) dependencies.
+        for key, migration in self.disk_migrations.items():
+            if self.graph.nodes.get(key, None) is not None:
+                self.add_internal_dependencies(key, migration)
+        # Add external dependencies now that the internal ones have been resolved.
+        for key, migration in self.disk_migrations.items():
+            if self.graph.nodes.get(key, None) is not None:
+                self.add_external_dependencies(key, migration)
         # Ensure the graph is consistent.
         try:
             self.graph.validate_consistency()
